@@ -8,6 +8,7 @@ import '../../../core/models/document.dart';
 import '../../../core/models/folder.dart';
 import '../../../core/state/chitra_session.dart';
 import '../../scanner/presentation/in_app_camera_screen.dart';
+import 'folder_detail_screen.dart';
 
 // ── sort options ─────────────────────────────────────────────────────────────
 enum _SortBy { name, date, size }
@@ -182,9 +183,7 @@ class _OrganizePageState extends State<OrganizePage> {
   Future<void> _openCamera() async {
     await Navigator.of(context).push<void>(
       MaterialPageRoute<void>(
-        builder: (_) => InAppCameraScreen(
-          initialFolderId: _activeFolderId,
-        ),
+        builder: (_) => InAppCameraScreen(initialFolderId: _activeFolderId),
       ),
     );
   }
@@ -232,14 +231,17 @@ class _OrganizePageState extends State<OrganizePage> {
               onTap: () async {
                 Navigator.pop(context);
                 final picker = ImagePicker();
-                final picked =
-                    await picker.pickImage(source: ImageSource.gallery);
+                final picked = await picker.pickImage(
+                  source: ImageSource.gallery,
+                );
                 if (picked != null && mounted) {
                   _session.addImagePath(picked.path);
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(
-                        content: Text(
-                            'Image added. Tap the banner above to save.')),
+                      content: Text(
+                        'Image added. Tap the banner above to save.',
+                      ),
+                    ),
                   );
                 }
               },
@@ -251,8 +253,10 @@ class _OrganizePageState extends State<OrganizePage> {
                   color: Colors.red.withAlpha(25),
                   borderRadius: BorderRadius.circular(8),
                 ),
-                child:
-                    const Icon(Icons.picture_as_pdf_outlined, color: Colors.red),
+                child: const Icon(
+                  Icons.picture_as_pdf_outlined,
+                  color: Colors.red,
+                ),
               ),
               title: const Text('Pick PDF'),
               subtitle: const Text('Import a PDF document'),
@@ -265,11 +269,8 @@ class _OrganizePageState extends State<OrganizePage> {
                 if (result != null &&
                     result.files.single.path != null &&
                     mounted) {
-                  final name =
-                      result.files.single.name.replaceAll('.pdf', '');
-                  _session.createDocumentFromBatch(
-                    name: name,
-                  );
+                  final name = result.files.single.name.replaceAll('.pdf', '');
+                  _session.createDocumentFromBatch(name: name);
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(content: Text('PDF "$name" imported.')),
                   );
@@ -296,8 +297,7 @@ class _OrganizePageState extends State<OrganizePage> {
             onSortChanged: (v) => setState(() => _sortBy = v),
             searchQuery: _searchQuery,
             activeFolderId: _activeFolderId,
-            onFolderSelected: (id) =>
-                setState(() => _activeFolderId = id),
+            onFolderSelected: (id) => setState(() => _activeFolderId = id),
             onCreateFolder: _showCreateFolderDialog,
             onRenameFolder: _showRenameFolderDialog,
             onRenameDoc: _showRenameDocDialog,
@@ -363,15 +363,68 @@ class _FoldersTab extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final docs = activeFolderId == null
-        ? sortedDocs(filtered(session.documents))
-        : sortedDocs(
-            filtered(session.documentsInFolder(activeFolderId!)),
-          );
+    // Show folders as vertical list if any exist
+    if (session.folders.isNotEmpty) {
+      return CustomScrollView(
+        slivers: [
+          SliverAppBar(
+            pinned: true,
+            title: const Text('Folders'),
+            backgroundColor: Theme.of(context).appBarTheme.backgroundColor,
+          ),
+          SliverPadding(
+            padding: const EdgeInsets.all(12),
+            sliver: SliverList(
+              delegate: SliverChildBuilderDelegate(
+                (ctx, i) {
+                  final f = session.folders[i];
+                  final docCount = session.documentsInFolder(f.id).length;
+                  return Card(
+                    margin: const EdgeInsets.only(bottom: 8),
+                    child: ListTile(
+                      leading: Icon(
+                        f.isLocked ? Icons.lock : Icons.folder,
+                        color: Colors.blue,
+                      ),
+                      title: Text(f.name),
+                      subtitle: Text('$docCount document(s)'),
+                      trailing: PopupMenuButton<String>(
+                        icon: const Icon(Icons.more_vert),
+                        onSelected: (v) {
+                          if (v == 'rename') {
+                            onRenameFolder(f);
+                          }
+                        },
+                        itemBuilder: (_) => const [
+                          PopupMenuItem(
+                            value: 'rename',
+                            child: Text('Rename'),
+                          ),
+                        ],
+                      ),
+                      onTap: () {
+                        Navigator.of(context).push(
+                          MaterialPageRoute<void>(
+                            builder: (_) => FolderDetailScreen(folder: f),
+                          ),
+                        );
+                      },
+                    ),
+                  );
+                },
+                childCount: session.folders.length,
+              ),
+            ),
+          ),
+        ],
+      );
+    }
+
+    // If no folders, show all documents
+    final docs = sortedDocs(filtered(session.documents));
 
     return CustomScrollView(
       slivers: [
-        // Doc list
         if (docs.isEmpty)
           SliverFillRemaining(
             child: _EmptyState(
@@ -417,9 +470,7 @@ class _DocumentCard extends StatelessWidget {
 
   String _folderName() {
     try {
-      return session.folders
-          .firstWhere((f) => f.id == doc.folderId)
-          .name;
+      return session.folders.firstWhere((f) => f.id == doc.folderId).name;
     } catch (_) {
       return 'Unknown';
     }
@@ -470,8 +521,9 @@ class _DocumentCard extends StatelessWidget {
                             Chip(
                               label: Text(l),
                               padding: EdgeInsets.zero,
-                              labelPadding:
-                                  const EdgeInsets.symmetric(horizontal: 6),
+                              labelPadding: const EdgeInsets.symmetric(
+                                horizontal: 6,
+                              ),
                               materialTapTargetSize:
                                   MaterialTapTargetSize.shrinkWrap,
                             ),
@@ -481,7 +533,8 @@ class _DocumentCard extends StatelessWidget {
                   ],
                 ),
               ),
-              Column(
+              Row(
+                mainAxisSize: MainAxisSize.min,
                 children: [
                   IconButton(
                     icon: Icon(
@@ -525,8 +578,10 @@ class _DocumentCard extends StatelessWidget {
                       PopupMenuItem(
                         value: 'trash',
                         child: ListTile(
-                          leading: Icon(Icons.delete_outline,
-                              color: Colors.red),
+                          leading: Icon(
+                            Icons.delete_outline,
+                            color: Colors.red,
+                          ),
                           title: Text(
                             'Move to Trash',
                             style: TextStyle(color: Colors.red),
@@ -557,8 +612,7 @@ class _DocThumbnail extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final firstPath =
-        doc.pages.isNotEmpty ? doc.pages.first.sourcePath : null;
+    final firstPath = doc.pages.isNotEmpty ? doc.pages.first.sourcePath : null;
     final hasFile = firstPath != null && File(firstPath).existsSync();
 
     if (hasFile) {
@@ -613,8 +667,8 @@ class _EmptyState extends StatelessWidget {
           Text(
             message,
             style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: Theme.of(context).colorScheme.outline,
-                ),
+              color: Theme.of(context).colorScheme.outline,
+            ),
           ),
         ],
       ),

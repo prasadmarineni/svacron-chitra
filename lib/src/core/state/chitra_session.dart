@@ -52,8 +52,9 @@ class ChitraSession extends ChangeNotifier {
   final List<ChitraDocument> _documents = [];
   final List<String> _trashedDocIds = [];
 
-  List<ChitraDocument> get documents =>
-      List.unmodifiable(_documents.where((d) => !_trashedDocIds.contains(d.id)));
+  List<ChitraDocument> get documents => List.unmodifiable(
+    _documents.where((d) => !_trashedDocIds.contains(d.id)),
+  );
 
   List<ChitraDocument> get trashedDocuments =>
       List.unmodifiable(_documents.where((d) => _trashedDocIds.contains(d.id)));
@@ -91,16 +92,15 @@ class ChitraSession extends ChangeNotifier {
     late String targetFolderId;
     if (folderId == null) {
       final now = DateTime.now();
-      final folderName = '${now.day.toString().padLeft(2, '0')}-'
+      final folderName =
+          '${now.day.toString().padLeft(2, '0')}-'
           '${now.month.toString().padLeft(2, '0')}-'
           '${now.year}-'
           '${now.hour.toString().padLeft(2, '0')}'
           '${now.minute.toString().padLeft(2, '0')}';
-      
+
       targetFolderId = DateTime.now().microsecondsSinceEpoch.toString();
-      _folders.add(
-        ChitraFolder(id: targetFolderId, name: folderName),
-      );
+      _folders.add(ChitraFolder(id: targetFolderId, name: folderName));
     } else {
       targetFolderId = folderId;
     }
@@ -119,6 +119,7 @@ class ChitraSession extends ChangeNotifier {
       createdAt: DateTime.now(),
     );
     _documents.add(doc);
+    _imagePaths.clear();
     notifyListeners();
     return doc;
   }
@@ -241,10 +242,12 @@ class ChitraSession extends ChangeNotifier {
   List<ChitraDocument> searchDocuments(String query) {
     final q = query.toLowerCase();
     return documents
-        .where((d) =>
-            d.name.toLowerCase().contains(q) ||
-            (d.ocrText?.toLowerCase().contains(q) ?? false) ||
-            d.labels.any((l) => l.toLowerCase().contains(q)))
+        .where(
+          (d) =>
+              d.name.toLowerCase().contains(q) ||
+              (d.ocrText?.toLowerCase().contains(q) ?? false) ||
+              d.labels.any((l) => l.toLowerCase().contains(q)),
+        )
         .toList();
   }
 }
