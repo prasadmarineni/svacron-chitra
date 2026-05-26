@@ -112,7 +112,7 @@ lib/
 ✅ ChitraDocument: id, name, pages, folderId, isFavorite, isEncrypted, labels, createdAt, updatedAt
 ✅ DocumentPage: id, sourcePath, enhancedPath, ocrText, createdAt
 ✅ ChitraFolder: id, name, isLocked, createdAt
-✅ Default folders: Inbox, Bills, Notes, IDs
+✅ Default folders: IDs, Bills
 ```
 
 ### State Management (ChitraSession)

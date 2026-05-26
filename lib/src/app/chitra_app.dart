@@ -95,6 +95,27 @@ class _HomeShellState extends State<HomeShell> {
                 ],
               ),
             ),
+            // Primary navigation
+            ListTile(
+              leading: const Icon(Icons.folder_outlined),
+              title: const Text('Home'),
+              selected: _index == 0,
+              onTap: () {
+                Navigator.pop(context);
+                setState(() => _index = 0);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.picture_as_pdf_outlined),
+              title: const Text('PDF Tools'),
+              selected: _index == 1,
+              onTap: () {
+                Navigator.pop(context);
+                setState(() => _index = 1);
+              },
+            ),
+            const Divider(),
+            // Utilities
             ListTile(
               leading: const Icon(Icons.text_snippet_outlined),
               title: const Text('OCR — Extract Text'),
@@ -145,22 +166,6 @@ class _HomeShellState extends State<HomeShell> {
         ),
       ),
       body: IndexedStack(index: _index, children: _pages),
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: _index,
-        onDestinationSelected: (value) => setState(() => _index = value),
-        destinations: const [
-          NavigationDestination(
-            icon: Icon(Icons.folder_outlined),
-            selectedIcon: Icon(Icons.folder),
-            label: 'Home',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.picture_as_pdf_outlined),
-            selectedIcon: Icon(Icons.picture_as_pdf),
-            label: 'PDF',
-          ),
-        ],
-      ),
     );
   }
 }

@@ -81,15 +81,34 @@ class ChitraSession extends ChangeNotifier {
   }
 
   /// Creates a new document from the current imagePaths batch.
+  /// Auto-creates a dated folder (dd-MM-yyyy-HHmm format).
   /// Returns the saved document.
   ChitraDocument createDocumentFromBatch({
     required String name,
-    required String folderId,
+    String? folderId,
   }) {
+    // Auto-create folder with dd-MM-yyyy-HHmm format if folderId not provided
+    late String targetFolderId;
+    if (folderId == null) {
+      final now = DateTime.now();
+      final folderName = '${now.day.toString().padLeft(2, '0')}-'
+          '${now.month.toString().padLeft(2, '0')}-'
+          '${now.year}-'
+          '${now.hour.toString().padLeft(2, '0')}'
+          '${now.minute.toString().padLeft(2, '0')}';
+      
+      targetFolderId = DateTime.now().microsecondsSinceEpoch.toString();
+      _folders.add(
+        ChitraFolder(id: targetFolderId, name: folderName),
+      );
+    } else {
+      targetFolderId = folderId;
+    }
+
     final doc = ChitraDocument(
       id: DateTime.now().microsecondsSinceEpoch.toString(),
       name: name,
-      folderId: folderId,
+      folderId: targetFolderId,
       pages: List.generate(
         _imagePaths.length,
         (i) => DocumentPage(
@@ -152,12 +171,7 @@ class ChitraSession extends ChangeNotifier {
   }
 
   // ── folders ───────────────────────────────────────────────────────────────
-  final List<ChitraFolder> _folders = [
-    ChitraFolder(id: 'default', name: 'Inbox'),
-    ChitraFolder(id: 'bills', name: 'Bills'),
-    ChitraFolder(id: 'notes', name: 'Notes'),
-    ChitraFolder(id: 'ids', name: 'IDs'),
-  ];
+  final List<ChitraFolder> _folders = [];
 
   List<ChitraFolder> get folders => List.unmodifiable(_folders);
 
