@@ -49,7 +49,10 @@ class _RotateEditorScreenState extends State<RotateEditorScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: EditorUtils.editorBackground,
       appBar: AppBar(
+        backgroundColor: EditorUtils.editorBackground,
+        foregroundColor: Colors.white,
         title: const Text('Rotate & Flip'),
         leading: IconButton(
           icon: const Icon(Icons.close),

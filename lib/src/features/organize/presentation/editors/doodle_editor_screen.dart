@@ -67,9 +67,9 @@ class _DoodleEditorScreenState extends State<DoodleEditorScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.black,
+      backgroundColor: EditorUtils.editorBackground,
       appBar: AppBar(
-        backgroundColor: Colors.black,
+        backgroundColor: EditorUtils.editorBackground,
         foregroundColor: Colors.white,
         title: const Text('Doodle'),
         leading: IconButton(
@@ -131,7 +131,7 @@ class _DoodleEditorScreenState extends State<DoodleEditorScreen> {
             ),
           ),
           Container(
-            color: Colors.grey[900],
+            color: EditorUtils.editorBackground,
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
             child: Column(
               mainAxisSize: MainAxisSize.min,

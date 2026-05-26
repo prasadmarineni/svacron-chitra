@@ -85,9 +85,9 @@ class _SignatureEditorScreenState extends State<SignatureEditorScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.black,
+      backgroundColor: EditorUtils.editorBackground,
       appBar: AppBar(
-        backgroundColor: Colors.black,
+        backgroundColor: EditorUtils.editorBackground,
         foregroundColor: Colors.white,
         title: const Text('Signature'),
         leading: IconButton(
@@ -130,7 +130,7 @@ class _SignatureEditorScreenState extends State<SignatureEditorScreen> {
         children: [
           // Instruction
           Container(
-            color: Colors.grey[850],
+            color: EditorUtils.editorBackground,
             padding: const EdgeInsets.symmetric(vertical: 8),
             width: double.infinity,
             child: const Text(
@@ -166,7 +166,7 @@ class _SignatureEditorScreenState extends State<SignatureEditorScreen> {
 
           // Controls
           Container(
-            color: Colors.grey[900],
+            color: EditorUtils.editorBackground,
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
             child: Row(
               children: [

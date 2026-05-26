@@ -62,9 +62,9 @@ class _TextEditorScreenState extends State<TextEditorScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.black,
+      backgroundColor: EditorUtils.editorBackground,
       appBar: AppBar(
-        backgroundColor: Colors.black,
+        backgroundColor: EditorUtils.editorBackground,
         foregroundColor: Colors.white,
         title: const Text('Add Text'),
         leading: IconButton(
@@ -125,7 +125,7 @@ class _TextEditorScreenState extends State<TextEditorScreen> {
           // Input panel
           if (_showInput)
             Container(
-              color: Colors.grey[850],
+              color: EditorUtils.editorBackground,
               padding: const EdgeInsets.all(12),
               child: Column(
                 mainAxisSize: MainAxisSize.min,

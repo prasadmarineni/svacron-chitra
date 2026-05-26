@@ -17,6 +17,9 @@ class CropEditorScreen extends StatefulWidget {
 }
 
 class _CropEditorScreenState extends State<CropEditorScreen> {
+  static const double _minZoom = 1.0;
+  static const double _maxZoom = 4.0;
+
   // Normalized (0..1) corner points: TL, TR, BR, BL
   List<Offset> _corners = const [
     Offset(0.10, 0.10),
@@ -25,15 +28,61 @@ class _CropEditorScreenState extends State<CropEditorScreen> {
     Offset(0.10, 0.90),
   ];
   bool _saving = false;
+  int _activePointers = 0;
+  bool _draggingHandle = false;
+  final TransformationController _transformController =
+      TransformationController();
+
+  @override
+  void dispose() {
+    _transformController.dispose();
+    super.dispose();
+  }
+
+  double get _currentScale =>
+      _transformController.value.getMaxScaleOnAxis().clamp(_minZoom, _maxZoom);
+
+  void _setZoom(double value) {
+    final next = value.clamp(_minZoom, _maxZoom);
+    _transformController.value = Matrix4.identity()..scale(next);
+    setState(() {});
+  }
+
+  void _zoomIn() => _setZoom(_currentScale + 0.25);
+
+  void _zoomOut() => _setZoom(_currentScale - 0.25);
 
   void _moveCorner(int i, Offset delta, Size size) {
+    final dx = delta.dx / size.width;
+    final dy = delta.dy / size.height;
     setState(() {
       final c = _corners[i];
       _corners = List<Offset>.from(_corners)
         ..[i] = Offset(
-          (c.dx + delta.dx / size.width).clamp(0.02, 0.98),
-          (c.dy + delta.dy / size.height).clamp(0.02, 0.98),
+          (c.dx + dx).clamp(0.02, 0.98),
+          (c.dy + dy).clamp(0.02, 0.98),
         );
+    });
+  }
+
+  void _moveCropWindow(Offset delta, Size size) {
+    var ndx = delta.dx / size.width;
+    var ndy = delta.dy / size.height;
+
+    final minX = _corners.map((p) => p.dx).reduce((a, b) => a < b ? a : b);
+    final maxX = _corners.map((p) => p.dx).reduce((a, b) => a > b ? a : b);
+    final minY = _corners.map((p) => p.dy).reduce((a, b) => a < b ? a : b);
+    final maxY = _corners.map((p) => p.dy).reduce((a, b) => a > b ? a : b);
+
+    if (minX + ndx < 0.02) ndx = 0.02 - minX;
+    if (maxX + ndx > 0.98) ndx = 0.98 - maxX;
+    if (minY + ndy < 0.02) ndy = 0.02 - minY;
+    if (maxY + ndy > 0.98) ndy = 0.98 - maxY;
+
+    setState(() {
+      _corners = _corners
+          .map((p) => Offset((p.dx + ndx).clamp(0.02, 0.98), (p.dy + ndy).clamp(0.02, 0.98)))
+          .toList();
     });
   }
 
@@ -62,16 +111,32 @@ class _CropEditorScreenState extends State<CropEditorScreen> {
 
   @override
   Widget build(BuildContext context) {
-    const handleR = 14.0;
-
     return Scaffold(
+      backgroundColor: EditorUtils.editorBackground,
       appBar: AppBar(
+        backgroundColor: EditorUtils.editorBackground,
+        foregroundColor: Colors.white,
         title: const Text('Crop'),
         leading: IconButton(
           icon: const Icon(Icons.close),
           onPressed: () => Navigator.pop(context),
         ),
         actions: [
+          IconButton(
+            tooltip: 'Zoom out',
+            onPressed: _zoomOut,
+            icon: const Icon(Icons.zoom_out),
+          ),
+          IconButton(
+            tooltip: 'Zoom in',
+            onPressed: _zoomIn,
+            icon: const Icon(Icons.zoom_in),
+          ),
+          IconButton(
+            tooltip: 'Reset zoom',
+            onPressed: () => _setZoom(1.0),
+            icon: const Icon(Icons.center_focus_strong),
+          ),
           TextButton(
             onPressed: _saving ? null : _applyCrop,
             child: _saving
@@ -86,38 +151,74 @@ class _CropEditorScreenState extends State<CropEditorScreen> {
       ),
       body: LayoutBuilder(builder: (_, constraints) {
         final size = Size(constraints.maxWidth, constraints.maxHeight);
-
+        const handleRadius = 22.0;
         Offset toPx(Offset n) => Offset(n.dx * size.width, n.dy * size.height);
 
-        return Stack(
-          children: [
-            Positioned.fill(
-              child: Image.file(File(widget.imagePath), fit: BoxFit.fill),
-            ),
-            Positioned.fill(
-              child: CustomPaint(
-                painter: _CropPainter(_corners.map(toPx).toList()),
+        return Listener(
+          onPointerDown: (_) => _activePointers++,
+          onPointerUp: (_) => _activePointers = (_activePointers - 1).clamp(0, 10),
+          onPointerCancel: (_) => _activePointers = (_activePointers - 1).clamp(0, 10),
+          onPointerMove: (event) {
+            if (_activePointers == 1 && !_draggingHandle) {
+              _moveCropWindow(event.delta, size);
+            }
+          },
+          child: Stack(
+            children: [
+              // Only the image is inside InteractiveViewer so zoom affects image only
+              SizedBox(
+                width: size.width,
+                height: size.height,
+                child: InteractiveViewer(
+                  transformationController: _transformController,
+                  minScale: _minZoom,
+                  maxScale: _maxZoom,
+                  panEnabled: false,
+                  scaleEnabled: true,
+                  child: Image.file(File(widget.imagePath), fit: BoxFit.fill),
+                ),
               ),
-            ),
-            for (var i = 0; i < _corners.length; i++)
-              Positioned(
-                left: toPx(_corners[i]).dx - handleR,
-                top: toPx(_corners[i]).dy - handleR,
-                child: GestureDetector(
-                  onPanUpdate: (d) => _moveCorner(i, d.delta, size),
-                  child: Container(
-                    width: handleR * 2,
-                    height: handleR * 2,
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      shape: BoxShape.circle,
-                      border: Border.all(color: Colors.cyan, width: 3),
-                      boxShadow: const [BoxShadow(blurRadius: 4, color: Colors.black38)],
-                    ),
+              // Crop overlay stays at fixed screen coordinates regardless of zoom
+              Positioned.fill(
+                child: IgnorePointer(
+                  child: CustomPaint(
+                    painter: _CropPainter(_corners.map(toPx).toList()),
                   ),
                 ),
               ),
-          ],
+              // Corner handles stay at fixed screen coordinates regardless of zoom
+              for (var i = 0; i < _corners.length; i++)
+                Positioned(
+                  left: toPx(_corners[i]).dx - handleRadius,
+                  top: toPx(_corners[i]).dy - handleRadius,
+                  child: GestureDetector(
+                    onPanStart: (_) => _draggingHandle = true,
+                    onPanUpdate: (d) {
+                      if (_activePointers <= 1) {
+                        _moveCorner(i, d.delta, size);
+                      }
+                    },
+                    onPanEnd: (_) => _draggingHandle = false,
+                    onPanCancel: () => _draggingHandle = false,
+                    child: Container(
+                      width: handleRadius * 2,
+                      height: handleRadius * 2,
+                      decoration: BoxDecoration(
+                        color: Colors.white.withAlpha(220),
+                        shape: BoxShape.circle,
+                        border: Border.all(color: Colors.cyan, width: 3),
+                        boxShadow: const [
+                          BoxShadow(blurRadius: 4, color: Colors.black38),
+                        ],
+                      ),
+                      child: const Center(
+                        child: Icon(Icons.open_with, size: 16, color: Colors.cyan),
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          ),
         );
       }),
     );

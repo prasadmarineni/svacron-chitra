@@ -11,7 +11,7 @@ import '../../../core/storage/app_storage.dart';
 enum DocumentType { document, ids, ocrText, signature }
 
 /// In-app camera with corner detection and capture flow.
-/// Supports: Capture → Adjust Corners → [Retake | Done | Continue]
+/// Supports: Capture -> Adjust Corners -> [Retake | Done | Continue]
 class InAppCameraScreen extends StatefulWidget {
   const InAppCameraScreen({required this.initialFolderId, super.key});
 
@@ -27,19 +27,25 @@ class _InAppCameraScreenState extends State<InAppCameraScreen> {
   late List<CameraDescription> _cameras;
   bool _isCameraInitialized = false;
   bool _isCapturing = false;
+  bool _isAutoDetectingEdges = false;
 
-  // Capture & review state
   String? _capturedImagePath;
   String? _lastCaptureThumbnailPath;
   final _session = ChitraSession.instance;
   String? _targetFolderId;
 
-  // Document type & capture mode
   DocumentType _selectedDocType = DocumentType.document;
   bool _autoCapture = false;
 
   // Normalized corner points (0..1) in order: TL, TR, BR, BL
   List<Offset>? _cornerPoints;
+
+  static const List<Offset> _defaultCornerPoints = [
+    Offset(0.10, 0.10),
+    Offset(0.90, 0.10),
+    Offset(0.90, 0.90),
+    Offset(0.10, 0.90),
+  ];
 
   @override
   void initState() {
@@ -77,23 +83,25 @@ class _InAppCameraScreenState extends State<InAppCameraScreen> {
 
     try {
       final xFile = await _cameraController.takePicture();
-      // Copy immediately into the persistent images folder so it survives reinstalls.
       final persistentPath = AppStorage.newImagePath();
       await File(xFile.path).copy(persistentPath);
 
+      final detectedCorners = _autoCapture
+          ? await _detectDocumentCorners(persistentPath)
+          : null;
+
+      if (!mounted) return;
       setState(() {
         _capturedImagePath = persistentPath;
         _lastCaptureThumbnailPath = persistentPath;
-        _cornerPoints = const [
-          Offset(0.10, 0.10),
-          Offset(0.90, 0.10),
-          Offset(0.90, 0.90),
-          Offset(0.10, 0.90),
-        ];
+        _cornerPoints = detectedCorners ?? _defaultCornerPoints;
+        _isCapturing = false;
       });
     } catch (e) {
       _showMessage('Error capturing photo: $e');
-      if (mounted) setState(() => _isCapturing = false);
+      if (mounted) {
+        setState(() => _isCapturing = false);
+      }
     }
   }
 
@@ -115,7 +123,7 @@ class _InAppCameraScreenState extends State<InAppCameraScreen> {
     await _saveCaptureAndProceed(exitAfterSave: true);
   }
 
-  Future<void> _continue() async {
+  Future<void> _continueCapture() async {
     await _saveCaptureAndProceed(exitAfterSave: false);
   }
 
@@ -145,9 +153,7 @@ class _InAppCameraScreenState extends State<InAppCameraScreen> {
 
   String _nextDocumentName() {
     var index = 1;
-    final existing = _session.documents
-        .map((d) => d.name.toLowerCase())
-        .toSet();
+    final existing = _session.documents.map((d) => d.name.toLowerCase()).toSet();
     while (existing.contains('document$index')) {
       index++;
     }
@@ -155,9 +161,7 @@ class _InAppCameraScreenState extends State<InAppCameraScreen> {
   }
 
   String _ensureTargetFolderId() {
-    if (_targetFolderId != null) {
-      return _targetFolderId!;
-    }
+    if (_targetFolderId != null) return _targetFolderId!;
 
     if (widget.initialFolderId != null) {
       _targetFolderId = widget.initialFolderId;
@@ -196,9 +200,7 @@ class _InAppCameraScreenState extends State<InAppCameraScreen> {
       final file = File(imagePath);
       final bytes = await file.readAsBytes();
       final decoded = img.decodeImage(bytes);
-      if (decoded == null) {
-        return imagePath;
-      }
+      if (decoded == null) return imagePath;
 
       final leftNorm = _cornerPoints!
           .map((p) => p.dx)
@@ -219,23 +221,14 @@ class _InAppCameraScreenState extends State<InAppCameraScreen> {
 
       final x = (leftNorm * decoded.width).round().clamp(0, decoded.width - 1);
       final y = (topNorm * decoded.height).round().clamp(0, decoded.height - 1);
-      final width = ((rightNorm - leftNorm) * decoded.width).round().clamp(
-        1,
-        decoded.width - x,
-      );
-      final height = ((bottomNorm - topNorm) * decoded.height).round().clamp(
-        1,
-        decoded.height - y,
-      );
+      final width = ((rightNorm - leftNorm) * decoded.width)
+          .round()
+          .clamp(1, decoded.width - x);
+      final height = ((bottomNorm - topNorm) * decoded.height)
+          .round()
+          .clamp(1, decoded.height - y);
 
-      final cropped = img.copyCrop(
-        decoded,
-        x: x,
-        y: y,
-        width: width,
-        height: height,
-      );
-      // Always save to the persistent images folder.
+      final cropped = img.copyCrop(decoded, x: x, y: y, width: width, height: height);
       final outPath = AppStorage.newImagePath();
       await File(outPath).writeAsBytes(img.encodeJpg(cropped, quality: 95));
       return outPath;
@@ -244,18 +237,229 @@ class _InAppCameraScreenState extends State<InAppCameraScreen> {
     }
   }
 
+  Future<List<Offset>?> _detectDocumentCorners(String imagePath) async {
+    try {
+      final bytes = await File(imagePath).readAsBytes();
+      final decoded = img.decodeImage(bytes);
+      if (decoded == null) return null;
+
+      var working = decoded;
+      if (decoded.width > 900 || decoded.height > 900) {
+        if (decoded.width >= decoded.height) {
+          working = img.copyResize(decoded, width: 900);
+        } else {
+          working = img.copyResize(decoded, height: 900);
+        }
+      }
+
+      int luminance(img.Pixel p) =>
+          ((0.299 * p.r) + (0.587 * p.g) + (0.114 * p.b)).round();
+
+      final borderSamples = <int>[];
+      final w = working.width;
+      final h = working.height;
+
+      const step = 4;
+      for (var x = 0; x < w; x += step) {
+        borderSamples.add(luminance(working.getPixelSafe(x, 0)));
+        borderSamples.add(luminance(working.getPixelSafe(x, h - 1)));
+      }
+      for (var y = 0; y < h; y += step) {
+        borderSamples.add(luminance(working.getPixelSafe(0, y)));
+        borderSamples.add(luminance(working.getPixelSafe(w - 1, y)));
+      }
+
+      if (borderSamples.isEmpty) return null;
+      final bg = borderSamples.reduce((a, b) => a + b) / borderSamples.length;
+
+      var minX = w;
+      var minY = h;
+      var maxX = -1;
+      var maxY = -1;
+
+      const threshold = 20;
+      for (var y = 0; y < h; y++) {
+        for (var x = 0; x < w; x++) {
+          final l = luminance(working.getPixelSafe(x, y));
+          if ((l - bg).abs() >= threshold) {
+            if (x < minX) minX = x;
+            if (y < minY) minY = y;
+            if (x > maxX) maxX = x;
+            if (y > maxY) maxY = y;
+          }
+        }
+      }
+
+      if (maxX <= minX || maxY <= minY) return null;
+
+      final boxW = maxX - minX;
+      final boxH = maxY - minY;
+      final coverage = (boxW * boxH) / (w * h);
+      if (coverage < 0.12 || coverage > 0.96) return null;
+
+      final marginX = (0.02 * w).round();
+      final marginY = (0.02 * h).round();
+      minX = (minX - marginX).clamp(0, w - 1);
+      minY = (minY - marginY).clamp(0, h - 1);
+      maxX = (maxX + marginX).clamp(0, w - 1);
+      maxY = (maxY + marginY).clamp(0, h - 1);
+
+      final left = (minX / w).clamp(0.02, 0.98);
+      final top = (minY / h).clamp(0.02, 0.98);
+      final right = (maxX / w).clamp(0.02, 0.98);
+      final bottom = (maxY / h).clamp(0.02, 0.98);
+
+      if (right - left < 0.10 || bottom - top < 0.10) return null;
+
+      return [
+        Offset(left, top),
+        Offset(right, top),
+        Offset(right, bottom),
+        Offset(left, bottom),
+      ];
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> _runAutoEdgeDetection() async {
+    if (_capturedImagePath == null || _isAutoDetectingEdges) return;
+
+    setState(() => _isAutoDetectingEdges = true);
+    try {
+      final corners = await _detectDocumentCorners(_capturedImagePath!);
+      if (!mounted) return;
+
+      if (corners == null) {
+        _showMessage('Auto edge detection failed. Adjust corners manually.');
+        return;
+      }
+
+      setState(() {
+        _autoCapture = true;
+        _cornerPoints = corners;
+      });
+      _showMessage('Auto edges applied.');
+    } finally {
+      if (mounted) {
+        setState(() => _isAutoDetectingEdges = false);
+      }
+    }
+  }
+
   void _moveCorner(int index, Offset delta, Size size) {
     if (_cornerPoints == null || index < 0 || index > 3) return;
-    final dx = (delta.dx / size.width);
-    final dy = (delta.dy / size.height);
+    final dx = delta.dx / size.width;
+    final dy = delta.dy / size.height;
     final current = _cornerPoints![index];
     final updated = Offset(
       (current.dx + dx).clamp(0.02, 0.98),
       (current.dy + dy).clamp(0.02, 0.98),
     );
+
     setState(() {
       _cornerPoints = [..._cornerPoints!]..[index] = updated;
     });
+  }
+
+  Widget _buildCoverCameraPreview() {
+    final previewSize = _cameraController.value.previewSize;
+    if (previewSize == null) {
+      return CameraPreview(_cameraController);
+    }
+
+    return ClipRect(
+      child: OverflowBox(
+        alignment: Alignment.center,
+        child: FittedBox(
+          fit: BoxFit.cover,
+          child: SizedBox(
+            width: previewSize.height,
+            height: previewSize.width,
+            child: CameraPreview(_cameraController),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildManualAutoToggle({double fontSize = 12}) {
+    return Row(
+      children: [
+        Expanded(
+          child: GestureDetector(
+            onTap: () => setState(() => _autoCapture = false),
+            child: Container(
+              padding: const EdgeInsets.symmetric(vertical: 6),
+              decoration: BoxDecoration(
+                color: !_autoCapture ? Colors.cyan : Colors.grey.shade700,
+                borderRadius: const BorderRadius.only(
+                  topLeft: Radius.circular(8),
+                  bottomLeft: Radius.circular(8),
+                ),
+              ),
+              child: Center(
+                child: Text(
+                  'Manual',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: fontSize,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+        Expanded(
+          child: GestureDetector(
+            onTap: () async {
+              setState(() => _autoCapture = true);
+              if (_capturedImagePath != null) {
+                await _runAutoEdgeDetection();
+              }
+            },
+            child: Container(
+              padding: const EdgeInsets.symmetric(vertical: 6),
+              decoration: BoxDecoration(
+                color: _autoCapture ? Colors.cyan : Colors.grey.shade700,
+                borderRadius: const BorderRadius.only(
+                  topRight: Radius.circular(8),
+                  bottomRight: Radius.circular(8),
+                ),
+              ),
+              child: Center(
+                child: Text(
+                  'Auto',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: fontSize,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildDocTypeButton(DocumentType type, String label, IconData icon) {
+    final isSelected = _selectedDocType == type;
+    return ElevatedButton.icon(
+      onPressed: () {
+        setState(() => _selectedDocType = type);
+        _showMessage('$label mode selected');
+      },
+      style: ElevatedButton.styleFrom(
+        backgroundColor: isSelected ? Colors.cyan : Colors.grey.shade700,
+        foregroundColor: Colors.white,
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+      ),
+      icon: Icon(icon, size: 16),
+      label: Text(label, style: const TextStyle(fontSize: 12)),
+    );
   }
 
   void _showMessage(String message) {
@@ -280,12 +484,10 @@ class _InAppCameraScreenState extends State<InAppCameraScreen> {
       );
     }
 
-    // If image captured, show preview with corner adjustment & buttons
     if (_capturedImagePath != null) {
       return _buildImageReview();
     }
 
-    // Camera view
     return Scaffold(
       appBar: AppBar(
         title: const Text('Capture Image'),
@@ -296,8 +498,12 @@ class _InAppCameraScreenState extends State<InAppCameraScreen> {
       ),
       body: Stack(
         children: [
-          CameraPreview(_cameraController),
-          // Document guide overlay
+          Positioned.fill(
+            child: ColoredBox(
+              color: Colors.black,
+              child: _buildCoverCameraPreview(),
+            ),
+          ),
           Center(
             child: Container(
               width: 290,
@@ -314,16 +520,6 @@ class _InAppCameraScreenState extends State<InAppCameraScreen> {
                     size: 64,
                     color: Colors.cyan.withOpacity(0.6),
                   ),
-                  const SizedBox(height: 16),
-                  const Text(
-                    '',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      color: Colors.white70,
-                      fontSize: 16,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
                 ],
               ),
             ),
@@ -335,7 +531,6 @@ class _InAppCameraScreenState extends State<InAppCameraScreen> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            // Document type selector row
             SizedBox(
               height: 50,
               child: SingleChildScrollView(
@@ -343,131 +538,58 @@ class _InAppCameraScreenState extends State<InAppCameraScreen> {
                 padding: const EdgeInsets.symmetric(horizontal: 12),
                 child: Row(
                   children: [
-                    _buildDocTypeButton(
-                      DocumentType.document,
-                      'Document',
-                      Icons.description,
-                    ),
+                    _buildDocTypeButton(DocumentType.document, 'Document', Icons.description),
                     const SizedBox(width: 8),
-                    _buildDocTypeButton(
-                      DocumentType.ids,
-                      'IDs',
-                      Icons.credit_card,
-                    ),
+                    _buildDocTypeButton(DocumentType.ids, 'IDs', Icons.credit_card),
                     const SizedBox(width: 8),
-                    _buildDocTypeButton(
-                      DocumentType.ocrText,
-                      'OCR Text',
-                      Icons.text_fields,
-                    ),
+                    _buildDocTypeButton(DocumentType.ocrText, 'OCR Text', Icons.text_fields),
                     const SizedBox(width: 8),
-                    _buildDocTypeButton(
-                      DocumentType.signature,
-                      'Signature',
-                      Icons.edit,
-                    ),
+                    _buildDocTypeButton(DocumentType.signature, 'Signature', Icons.edit),
                   ],
                 ),
               ),
             ),
-            // Bottom control bar with camera, toggle, and done
             Padding(
               padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
               child: Row(
                 children: [
-                  // Left: Last capture thumbnail + Auto/Manual toggle
-                  if (_lastCaptureThumbnailPath != null)
-                    Container(
-                      width: 50,
-                      height: 50,
-                      decoration: BoxDecoration(
-                        border: Border.all(color: Colors.cyan, width: 2),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: ClipRRect(
-                        borderRadius: BorderRadius.circular(6),
-                        child: Image.file(
-                          File(_lastCaptureThumbnailPath!),
-                          fit: BoxFit.cover,
-                        ),
-                      ),
-                    )
-                  else
-                    Container(
-                      width: 50,
-                      height: 50,
-                      decoration: BoxDecoration(
-                        border: Border.all(color: Colors.grey, width: 1),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: const Icon(Icons.image_not_supported, size: 24),
-                    ),
-                  const SizedBox(width: 12),
-                  // Auto/Manual toggle
-                  Expanded(
-                    flex: 2,
-                    child: Row(
+                  SizedBox(
+                    width: 118,
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
                       children: [
-                        Expanded(
-                          child: GestureDetector(
-                            onTap: () =>
-                                setState(() => _autoCapture = false),
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(vertical: 8),
-                              decoration: BoxDecoration(
-                                color: !_autoCapture
-                                    ? Colors.cyan
-                                    : Colors.grey.shade700,
-                                borderRadius: const BorderRadius.only(
-                                  topLeft: Radius.circular(8),
-                                  bottomLeft: Radius.circular(8),
-                                ),
-                              ),
-                              child: const Center(
-                                child: Text(
-                                  'Manual',
-                                  style: TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w500,
-                                  ),
-                                ),
+                        _buildManualAutoToggle(fontSize: 11),
+                        const SizedBox(height: 8),
+                        if (_lastCaptureThumbnailPath != null)
+                          Container(
+                            width: 50,
+                            height: 50,
+                            decoration: BoxDecoration(
+                              border: Border.all(color: Colors.cyan, width: 2),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(6),
+                              child: Image.file(
+                                File(_lastCaptureThumbnailPath!),
+                                fit: BoxFit.cover,
                               ),
                             ),
-                          ),
-                        ),
-                        Expanded(
-                          child: GestureDetector(
-                            onTap: () => setState(() => _autoCapture = true),
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(vertical: 8),
-                              decoration: BoxDecoration(
-                                color: _autoCapture
-                                    ? Colors.cyan
-                                    : Colors.grey.shade700,
-                                borderRadius: const BorderRadius.only(
-                                  topRight: Radius.circular(8),
-                                  bottomRight: Radius.circular(8),
-                                ),
-                              ),
-                              child: const Center(
-                                child: Text(
-                                  'Auto',
-                                  style: TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w500,
-                                  ),
-                                ),
-                              ),
+                          )
+                        else
+                          Container(
+                            width: 50,
+                            height: 50,
+                            decoration: BoxDecoration(
+                              border: Border.all(color: Colors.grey, width: 1),
+                              borderRadius: BorderRadius.circular(8),
                             ),
+                            child: const Icon(Icons.image_not_supported, size: 24),
                           ),
-                        ),
                       ],
                     ),
                   ),
                   const Spacer(),
-                  // Center: Small capture button
                   FloatingActionButton.small(
                     onPressed: _isCapturing ? null : _capturePhoto,
                     backgroundColor: Colors.cyan,
@@ -477,20 +599,16 @@ class _InAppCameraScreenState extends State<InAppCameraScreen> {
                             height: 20,
                             child: CircularProgressIndicator(
                               strokeWidth: 2,
-                              valueColor:
-                                  AlwaysStoppedAnimation<Color>(Colors.white),
+                              valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
                             ),
                           )
                         : const Icon(Icons.camera_alt, size: 20),
                   ),
                   const Spacer(),
-                  // Right: Done button
                   FilledButton.icon(
                     icon: const Icon(Icons.check),
                     label: const Text('Done'),
-                    onPressed: _capturedImagePath == null
-                        ? null
-                        : () => Navigator.pop(context),
+                    onPressed: () => Navigator.pop(context),
                   ),
                 ],
               ),
@@ -498,27 +616,6 @@ class _InAppCameraScreenState extends State<InAppCameraScreen> {
           ],
         ),
       ),
-    );
-  }
-
-  Widget _buildDocTypeButton(
-    DocumentType type,
-    String label,
-    IconData icon,
-  ) {
-    final isSelected = _selectedDocType == type;
-    return ElevatedButton.icon(
-      onPressed: () {
-        setState(() => _selectedDocType = type);
-        _showMessage('$label mode selected');
-      },
-      style: ElevatedButton.styleFrom(
-        backgroundColor: isSelected ? Colors.cyan : Colors.grey.shade700,
-        foregroundColor: Colors.white,
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-      ),
-      icon: Icon(icon, size: 16),
-      label: Text(label, style: const TextStyle(fontSize: 12)),
     );
   }
 
@@ -530,6 +627,19 @@ class _InAppCameraScreenState extends State<InAppCameraScreen> {
           icon: const Icon(Icons.close),
           onPressed: () => Navigator.pop(context),
         ),
+        actions: [
+          TextButton.icon(
+            onPressed: _isAutoDetectingEdges ? null : _runAutoEdgeDetection,
+            icon: _isAutoDetectingEdges
+                ? const SizedBox(
+                    width: 14,
+                    height: 14,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.auto_fix_high),
+            label: const Text('Auto Edge'),
+          ),
+        ],
       ),
       body: Padding(
         padding: const EdgeInsets.fromLTRB(12, 12, 12, 0),
@@ -538,17 +648,9 @@ class _InAppCameraScreenState extends State<InAppCameraScreen> {
             final previewHeight = constraints.maxHeight - 100;
             final handleRadius = 14.0;
             final size = Size(constraints.maxWidth, previewHeight);
-            final points =
-                _cornerPoints ??
-                const [
-                  Offset(0.10, 0.10),
-                  Offset(0.90, 0.10),
-                  Offset(0.90, 0.90),
-                  Offset(0.10, 0.90),
-                ];
+            final points = _cornerPoints ?? _defaultCornerPoints;
 
-            Offset toPx(Offset p) =>
-                Offset(p.dx * size.width, p.dy * size.height);
+            Offset toPx(Offset p) => Offset(p.dx * size.width, p.dy * size.height);
 
             return SizedBox(
               height: previewHeight,
@@ -580,10 +682,7 @@ class _InAppCameraScreenState extends State<InAppCameraScreen> {
                           decoration: BoxDecoration(
                             color: Colors.white,
                             borderRadius: BorderRadius.circular(handleRadius),
-                            border: Border.all(
-                              color: Colors.cyan.shade700,
-                              width: 3,
-                            ),
+                            border: Border.all(color: Colors.cyan.shade700, width: 3),
                             boxShadow: const [
                               BoxShadow(color: Colors.black26, blurRadius: 4),
                             ],
@@ -602,7 +701,10 @@ class _InAppCameraScreenState extends State<InAppCameraScreen> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            // Document type selector row
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+              child: _buildManualAutoToggle(),
+            ),
             SizedBox(
               height: 50,
               child: SingleChildScrollView(
@@ -610,55 +712,35 @@ class _InAppCameraScreenState extends State<InAppCameraScreen> {
                 padding: const EdgeInsets.symmetric(horizontal: 12),
                 child: Row(
                   children: [
-                    _buildDocTypeButton(
-                      DocumentType.document,
-                      'Document',
-                      Icons.description,
-                    ),
+                    _buildDocTypeButton(DocumentType.document, 'Document', Icons.description),
                     const SizedBox(width: 8),
-                    _buildDocTypeButton(
-                      DocumentType.ids,
-                      'IDs',
-                      Icons.credit_card,
-                    ),
+                    _buildDocTypeButton(DocumentType.ids, 'IDs', Icons.credit_card),
                     const SizedBox(width: 8),
-                    _buildDocTypeButton(
-                      DocumentType.ocrText,
-                      'OCR Text',
-                      Icons.text_fields,
-                    ),
+                    _buildDocTypeButton(DocumentType.ocrText, 'OCR Text', Icons.text_fields),
                     const SizedBox(width: 8),
-                    _buildDocTypeButton(
-                      DocumentType.signature,
-                      'Signature',
-                      Icons.edit,
-                    ),
+                    _buildDocTypeButton(DocumentType.signature, 'Signature', Icons.edit),
                   ],
                 ),
               ),
             ),
-            // Bottom control bar
             Padding(
               padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
               child: Row(
                 children: [
-                  // Left: Retake button
                   OutlinedButton.icon(
                     icon: const Icon(Icons.replay),
                     label: const Text('Retake'),
                     onPressed: _retake,
                   ),
                   const SizedBox(width: 8),
-                  // Middle: Continue button
                   Expanded(
                     child: FilledButton.icon(
                       icon: const Icon(Icons.add_a_photo),
                       label: const Text('Continue'),
-                      onPressed: _continue,
+                      onPressed: _continueCapture,
                     ),
                   ),
                   const SizedBox(width: 8),
-                  // Right: Done button
                   FilledButton.icon(
                     icon: const Icon(Icons.check),
                     label: const Text('Done'),
@@ -696,9 +778,9 @@ class _CropOverlayPainter extends CustomPainter {
       ..lineTo(points[3].dx, points[3].dy)
       ..close();
 
-    final fullRect = Path()
-      ..addRect(Rect.fromLTWH(0, 0, size.width, size.height));
+    final fullRect = Path()..addRect(Rect.fromLTWH(0, 0, size.width, size.height));
     final outside = Path.combine(PathOperation.difference, fullRect, path);
+
     canvas.drawPath(outside, maskPaint);
     canvas.drawPath(path, borderPaint);
   }

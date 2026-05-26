@@ -37,34 +37,37 @@ class ImageViewerScreen extends StatefulWidget {
 
 class _ImageViewerScreenState extends State<ImageViewerScreen> {
   late int _currentPageIndex;
+  late ChitraDocument _document;
+  int _imageVersion = 0;
 
   @override
   void initState() {
     super.initState();
     _currentPageIndex = widget.initialPageIndex;
+    _document = widget.document;
   }
 
   Future<void> _shareImage() async {
-    if (_currentPageIndex >= widget.document.pages.length) return;
-    final imagePath = widget.document.pages[_currentPageIndex].sourcePath;
+    if (_currentPageIndex >= _document.pages.length) return;
+    final imagePath = _document.pages[_currentPageIndex].sourcePath;
     final file = File(imagePath);
 
     if (file.existsSync()) {
       await Share.shareXFiles(
         [XFile(imagePath)],
-        text: '${widget.document.name} - Page ${_currentPageIndex + 1}',
+        text: '${_document.name} - Page ${_currentPageIndex + 1}',
       );
     }
   }
 
   Future<void> _saveImageToGallery() async {
-    if (_currentPageIndex >= widget.document.pages.length) return;
-    final imagePath = widget.document.pages[_currentPageIndex].sourcePath;
+    if (_currentPageIndex >= _document.pages.length) return;
+    final imagePath = _document.pages[_currentPageIndex].sourcePath;
     final file = File(imagePath);
 
     if (file.existsSync()) {
       final appDir = await Directory('/storage/emulated/0/Pictures').create(recursive: true);
-      final fileName = '${widget.document.name}_page_${_currentPageIndex + 1}.jpg';
+      final fileName = '${_document.name}_page_${_currentPageIndex + 1}.jpg';
       final newFile = await file.copy('${appDir.path}/$fileName');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -76,10 +79,10 @@ class _ImageViewerScreenState extends State<ImageViewerScreen> {
 
   @override
   Widget build(BuildContext context) {
-    if (widget.document.pages.isEmpty) {
+    if (_document.pages.isEmpty) {
       return Scaffold(
         appBar: AppBar(
-          title: Text(widget.document.name),
+          title: Text(_document.name),
           leading: IconButton(
             icon: const Icon(Icons.arrow_back),
             onPressed: () => Navigator.pop(context),
@@ -91,14 +94,14 @@ class _ImageViewerScreenState extends State<ImageViewerScreen> {
       );
     }
 
-    final currentPage = widget.document.pages[_currentPageIndex];
+    final currentPage = _document.pages[_currentPageIndex];
     final imagePath = currentPage.sourcePath;
     final hasFile = File(imagePath).existsSync();
 
     return Scaffold(
       appBar: AppBar(
         title: Text(
-          '${widget.document.name} - Page ${_currentPageIndex + 1}',
+          '${_document.name} - Page ${_currentPageIndex + 1}',
         ),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
@@ -111,6 +114,7 @@ class _ImageViewerScreenState extends State<ImageViewerScreen> {
             child: hasFile
                 ? Image.file(
                     File(imagePath),
+                    key: ValueKey('$imagePath-$_imageVersion'),
                     fit: BoxFit.contain,
                   )
                 : Center(
@@ -121,7 +125,7 @@ class _ImageViewerScreenState extends State<ImageViewerScreen> {
                     ),
                   ),
           ),
-          if (widget.document.pages.length > 1)
+          if (_document.pages.length > 1)
             Padding(
               padding: const EdgeInsets.all(12),
               child: Row(
@@ -134,11 +138,11 @@ class _ImageViewerScreenState extends State<ImageViewerScreen> {
                         : null,
                   ),
                   Text(
-                    '${_currentPageIndex + 1} / ${widget.document.pages.length}',
+                    '${_currentPageIndex + 1} / ${_document.pages.length}',
                   ),
                   IconButton(
                     icon: const Icon(Icons.arrow_forward),
-                    onPressed: _currentPageIndex < widget.document.pages.length - 1
+                    onPressed: _currentPageIndex < _document.pages.length - 1
                         ? () => setState(() => _currentPageIndex++)
                         : null,
                   ),
@@ -247,10 +251,10 @@ class _ImageViewerScreenState extends State<ImageViewerScreen> {
           child: Row(
             children: [
               _editOption('Crop', Icons.crop, () => _editImage('crop')),
-              _editOption('Color Filters', Icons.palette, () => _editImage('colorfilter')),
+              _editOption('Color', Icons.palette, () => _editImage('colorfilter')),
               _editOption('Rotate', Icons.rotate_left, () => _editImage('rotate')),
               _editOption('Erase', Icons.cleaning_services, () => _editImage('erase')),
-              _editOption('Add Text', Icons.text_fields, () => _editImage('text')),
+              _editOption('Text', Icons.text_fields, () => _editImage('text')),
               _editOption('Highlight', Icons.highlight, () => _editImage('highlight')),
               _editOption('Doodle', Icons.brush, () => _editImage('doodle')),
               _editOption('Watermark', Icons.water_drop, () => _editImage('watermark')),
@@ -264,20 +268,37 @@ class _ImageViewerScreenState extends State<ImageViewerScreen> {
   }
 
   Widget _editOption(String label, IconData icon, VoidCallback onTap) {
-    return Tooltip(
-      message: label,
-      child: GestureDetector(
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 8),
-          child: Container(
-            width: 56,
-            height: 56,
-            decoration: BoxDecoration(
-              color: Colors.blue.withAlpha(25),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Icon(icon, color: Colors.blue),
+    return GestureDetector(
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 8),
+        child: SizedBox(
+          width: 70,
+          height: 80,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 50,
+                height: 50,
+                decoration: BoxDecoration(
+                  color: Colors.blue.withAlpha(25),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Icon(icon, color: Colors.blue, size: 24),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                label,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  fontSize: 11,
+                  color: Colors.black87,
+                ),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ],
           ),
         ),
       ),
@@ -285,10 +306,14 @@ class _ImageViewerScreenState extends State<ImageViewerScreen> {
   }
 
   Future<void> _editImage(String editType) async {
-    // Close the bottom sheet first
-    Navigator.pop(context);
+    final rootNavigator = Navigator.of(context);
 
-    final page = widget.document.pages[_currentPageIndex];
+    // Close the edit options sheet first so we can safely open an editor route.
+    if (rootNavigator.canPop()) {
+      rootNavigator.pop();
+    }
+
+    final page = _document.pages[_currentPageIndex];
     final imagePath = page.sourcePath;
 
     String? resultPath;
@@ -300,6 +325,7 @@ class _ImageViewerScreenState extends State<ImageViewerScreen> {
             builder: (_) => CropEditorScreen(imagePath: imagePath),
           ),
         );
+        break;
       case 'colorfilter':
         resultPath = await Navigator.push<String>(
           context,
@@ -307,6 +333,7 @@ class _ImageViewerScreenState extends State<ImageViewerScreen> {
             builder: (_) => ColorFilterEditorScreen(imagePath: imagePath),
           ),
         );
+        break;
       case 'rotate':
         resultPath = await Navigator.push<String>(
           context,
@@ -314,6 +341,7 @@ class _ImageViewerScreenState extends State<ImageViewerScreen> {
             builder: (_) => RotateEditorScreen(imagePath: imagePath),
           ),
         );
+        break;
       case 'erase':
         resultPath = await Navigator.push<String>(
           context,
@@ -321,6 +349,7 @@ class _ImageViewerScreenState extends State<ImageViewerScreen> {
             builder: (_) => EraseEditorScreen(imagePath: imagePath),
           ),
         );
+        break;
       case 'text':
         resultPath = await Navigator.push<String>(
           context,
@@ -328,6 +357,7 @@ class _ImageViewerScreenState extends State<ImageViewerScreen> {
             builder: (_) => TextEditorScreen(imagePath: imagePath),
           ),
         );
+        break;
       case 'highlight':
         resultPath = await Navigator.push<String>(
           context,
@@ -335,6 +365,7 @@ class _ImageViewerScreenState extends State<ImageViewerScreen> {
             builder: (_) => HighlightEditorScreen(imagePath: imagePath),
           ),
         );
+        break;
       case 'doodle':
         resultPath = await Navigator.push<String>(
           context,
@@ -342,6 +373,7 @@ class _ImageViewerScreenState extends State<ImageViewerScreen> {
             builder: (_) => DoodleEditorScreen(imagePath: imagePath),
           ),
         );
+        break;
       case 'watermark':
         resultPath = await Navigator.push<String>(
           context,
@@ -349,6 +381,7 @@ class _ImageViewerScreenState extends State<ImageViewerScreen> {
             builder: (_) => WatermarkEditorScreen(imagePath: imagePath),
           ),
         );
+        break;
       case 'cut':
         resultPath = await Navigator.push<String>(
           context,
@@ -356,6 +389,7 @@ class _ImageViewerScreenState extends State<ImageViewerScreen> {
             builder: (_) => CutEditorScreen(imagePath: imagePath),
           ),
         );
+        break;
       case 'signature':
         resultPath = await Navigator.push<String>(
           context,
@@ -363,16 +397,20 @@ class _ImageViewerScreenState extends State<ImageViewerScreen> {
             builder: (_) => SignatureEditorScreen(imagePath: imagePath),
           ),
         );
+        break;
     }
 
     if (resultPath != null && mounted) {
-      final pages = List<DocumentPage>.from(widget.document.pages);
+      final pages = List<DocumentPage>.from(_document.pages);
       pages[_currentPageIndex] = pages[_currentPageIndex].copyWith(
         sourcePath: resultPath,
       );
-      final updated = widget.document.copyWith(pages: pages);
+      final updated = _document.copyWith(pages: pages);
       ChitraSession.instance.saveDocument(updated);
-      setState(() {});
+      setState(() {
+        _document = updated;
+        _imageVersion++;
+      });
     }
   }
 

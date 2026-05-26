@@ -63,9 +63,9 @@ class _CutEditorScreenState extends State<CutEditorScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.black,
+      backgroundColor: EditorUtils.editorBackground,
       appBar: AppBar(
-        backgroundColor: Colors.black,
+        backgroundColor: EditorUtils.editorBackground,
         foregroundColor: Colors.white,
         title: const Text('Cut (Select & Crop)'),
         leading: IconButton(
@@ -124,7 +124,7 @@ class _CutEditorScreenState extends State<CutEditorScreen> {
             ),
           ),
           Container(
-            color: Colors.grey[900],
+            color: EditorUtils.editorBackground,
             padding: const EdgeInsets.all(12),
             child: const Text(
               'Drag to select the area you want to keep',

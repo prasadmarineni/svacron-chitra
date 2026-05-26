@@ -64,9 +64,9 @@ class _HighlightEditorScreenState extends State<HighlightEditorScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.black,
+      backgroundColor: EditorUtils.editorBackground,
       appBar: AppBar(
-        backgroundColor: Colors.black,
+        backgroundColor: EditorUtils.editorBackground,
         foregroundColor: Colors.white,
         title: const Text('Highlight'),
         leading: IconButton(
@@ -123,7 +123,7 @@ class _HighlightEditorScreenState extends State<HighlightEditorScreen> {
             ),
           ),
           Container(
-            color: Colors.grey[900],
+            color: EditorUtils.editorBackground,
             padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
             child: Row(
               children: [

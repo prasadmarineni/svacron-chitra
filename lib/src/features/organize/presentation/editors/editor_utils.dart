@@ -9,6 +9,9 @@ import '../../../../core/storage/app_storage.dart';
 
 /// Shared utilities for all image editors.
 abstract final class EditorUtils {
+  // Keep editor page backgrounds consistent across all edit screens.
+  static const Color editorBackground = Color(0xFF4A4A4A);
+
   /// Captures a [RepaintBoundary] identified by [key] and saves the result
   /// as a PNG to the persistent images folder. Returns the new file path.
   static Future<String> captureBoundary(
