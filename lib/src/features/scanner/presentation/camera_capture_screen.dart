@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 
 import '../../../core/services/camera_service.dart';
@@ -16,6 +18,9 @@ class _CameraCaptureScreenState extends State<CameraCaptureScreen> {
   final _session = ChitraSession.instance;
   bool _flashEnabled = false;
   bool _isCapturing = false;
+
+  /// Accumulated pages for this scanning session.
+  final List<String> _scannedPages = [];
 
   @override
   void initState() {
@@ -46,18 +51,14 @@ class _CameraCaptureScreenState extends State<CameraCaptureScreen> {
       // Navigate to enhancement screen
       final enhanced = await Navigator.of(context).push<String>(
         MaterialPageRoute<String>(
-          builder: (_) => ImageEnhancementScreen(
-            imagePath: imagePath,
-          ),
+          builder: (_) => ImageEnhancementScreen(imagePath: imagePath),
         ),
       );
 
       if (enhanced != null && mounted) {
-        _session.addImagePath(enhanced);
-        _showMessage('Image added to session');
-        if (mounted) {
-          Navigator.pop(context);
-        }
+        setState(() => _scannedPages.add(enhanced));
+        // Show review bottom sheet
+        await _showPageReview(enhanced);
       }
     } catch (e) {
       _showMessage('Error capturing photo: $e');
@@ -66,6 +67,131 @@ class _CameraCaptureScreenState extends State<CameraCaptureScreen> {
         setState(() => _isCapturing = false);
       }
     }
+  }
+
+  /// Shows a bottom sheet after each scan with Retake / Next Page / Save options.
+  Future<void> _showPageReview(String imagePath) async {
+    if (!mounted) return;
+    await showModalBottomSheet<void>(
+      context: context,
+      isDismissible: false,
+      enableDrag: false,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (sheetCtx) {
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Drag handle
+              Container(
+                width: 36,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade300,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  // Thumbnail of scanned page
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(8),
+                    child: Image.file(
+                      File(imagePath),
+                      width: 80,
+                      height: 100,
+                      fit: BoxFit.cover,
+                    ),
+                  ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Page ${_scannedPages.length} scanned',
+                          style: const TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 16,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          _scannedPages.length == 1
+                              ? '1 page in document'
+                              : '${_scannedPages.length} pages in document',
+                          style: TextStyle(
+                            color: Colors.grey.shade600,
+                            fontSize: 13,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 20),
+              Row(
+                children: [
+                  // Retake — removes last page, closes sheet
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      icon: const Icon(Icons.replay),
+                      label: const Text('Retake'),
+                      onPressed: () {
+                        setState(() => _scannedPages.removeLast());
+                        Navigator.pop(sheetCtx);
+                      },
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  // Next Page — closes sheet, stays in camera for next scan
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      icon: const Icon(Icons.add_a_photo),
+                      label: const Text('Next Page'),
+                      onPressed: () => Navigator.pop(sheetCtx),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  // Save — saves all pages as a document and exits
+                  Expanded(
+                    child: FilledButton.icon(
+                      icon: const Icon(Icons.save_alt),
+                      label: const Text('Save'),
+                      onPressed: () {
+                        Navigator.pop(sheetCtx);
+                        _saveDocument();
+                      },
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  void _saveDocument() {
+    if (_scannedPages.isEmpty) {
+      Navigator.pop(context);
+      return;
+    }
+    for (final p in _scannedPages) {
+      _session.addImagePath(p);
+    }
+    _session.createDocumentFromBatch(
+      name: 'Scan ${DateTime.now().day.toString().padLeft(2, '0')}-'
+          '${DateTime.now().month.toString().padLeft(2, '0')}-'
+          '${DateTime.now().year}',
+    );
+    if (mounted) Navigator.pop(context);
   }
 
   void _toggleFlash() {
@@ -86,14 +212,21 @@ class _CameraCaptureScreenState extends State<CameraCaptureScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Scan Document'),
+        title: Text(
+          _scannedPages.isEmpty
+              ? 'Scan Document'
+              : 'Scanning — ${_scannedPages.length} page${_scannedPages.length == 1 ? '' : 's'}',
+        ),
         actions: [
           IconButton(
-            icon: Icon(
-              _flashEnabled ? Icons.flash_on : Icons.flash_off,
-            ),
+            icon: Icon(_flashEnabled ? Icons.flash_on : Icons.flash_off),
             onPressed: _toggleFlash,
           ),
+          if (_scannedPages.isNotEmpty)
+            TextButton(
+              onPressed: _saveDocument,
+              child: const Text('Save'),
+            ),
         ],
       ),
       body: Stack(
@@ -106,10 +239,7 @@ class _CameraCaptureScreenState extends State<CameraCaptureScreen> {
                 width: 250,
                 height: 350,
                 decoration: BoxDecoration(
-                  border: Border.all(
-                    color: Colors.cyan,
-                    width: 3,
-                  ),
+                  border: Border.all(color: Colors.cyan, width: 3),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Column(
@@ -121,10 +251,12 @@ class _CameraCaptureScreenState extends State<CameraCaptureScreen> {
                       color: Colors.cyan.withOpacity(0.5),
                     ),
                     const SizedBox(height: 16),
-                    const Text(
-                      'Place document\nwithin the frame',
+                    Text(
+                      _scannedPages.isEmpty
+                          ? 'Place document\nwithin the frame'
+                          : 'Place next page\nwithin the frame',
                       textAlign: TextAlign.center,
-                      style: TextStyle(
+                      style: const TextStyle(
                         color: Colors.white70,
                         fontSize: 16,
                       ),
@@ -143,18 +275,12 @@ class _CameraCaptureScreenState extends State<CameraCaptureScreen> {
           Positioned(
             top: 60,
             right: 30,
-            child: Transform.flip(
-              flipX: true,
-              child: _buildCornerGuide(),
-            ),
+            child: Transform.flip(flipX: true, child: _buildCornerGuide()),
           ),
           Positioned(
             bottom: 140,
             left: 30,
-            child: Transform.flip(
-              flipY: true,
-              child: _buildCornerGuide(),
-            ),
+            child: Transform.flip(flipY: true, child: _buildCornerGuide()),
           ),
           Positioned(
             bottom: 140,
@@ -165,6 +291,52 @@ class _CameraCaptureScreenState extends State<CameraCaptureScreen> {
               child: _buildCornerGuide(),
             ),
           ),
+          // Scanned pages thumbnail strip at the bottom-left
+          if (_scannedPages.isNotEmpty)
+            Positioned(
+              bottom: 90,
+              left: 12,
+              child: SizedBox(
+                height: 60,
+                child: ListView.separated(
+                  scrollDirection: Axis.horizontal,
+                  shrinkWrap: true,
+                  itemCount: _scannedPages.length,
+                  separatorBuilder: (_, __) => const SizedBox(width: 6),
+                  itemBuilder: (_, i) => Stack(
+                    children: [
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(6),
+                        child: Image.file(
+                          File(_scannedPages[i]),
+                          width: 45,
+                          height: 60,
+                          fit: BoxFit.cover,
+                        ),
+                      ),
+                      Positioned(
+                        top: 2,
+                        right: 2,
+                        child: Container(
+                          padding: const EdgeInsets.all(2),
+                          decoration: BoxDecoration(
+                            color: Colors.black54,
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: Text(
+                            '${i + 1}',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 10,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
         ],
       ),
       bottomNavigationBar: BottomAppBar(
@@ -189,9 +361,7 @@ class _CameraCaptureScreenState extends State<CameraCaptureScreen> {
             ),
             IconButton(
               icon: const Icon(Icons.image),
-              onPressed: () {
-                Navigator.pop(context);
-              },
+              onPressed: () => Navigator.pop(context),
               tooltip: 'Gallery',
             ),
           ],
@@ -204,7 +374,7 @@ class _CameraCaptureScreenState extends State<CameraCaptureScreen> {
     return Container(
       width: 30,
       height: 30,
-      decoration: BoxDecoration(
+      decoration: const BoxDecoration(
         border: Border(
           top: BorderSide(color: Colors.cyan, width: 3),
           left: BorderSide(color: Colors.cyan, width: 3),
@@ -213,3 +383,4 @@ class _CameraCaptureScreenState extends State<CameraCaptureScreen> {
     );
   }
 }
+
