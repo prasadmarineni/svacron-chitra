@@ -11,9 +11,8 @@ abstract class DocumentRepository {
 class InMemoryDocumentRepository implements DocumentRepository {
   InMemoryDocumentRepository()
     : _folders = const [
-        ChitraFolder(id: 'f1', name: 'Bills'),
-        ChitraFolder(id: 'f2', name: 'Notes'),
         ChitraFolder(id: 'f3', name: 'IDs', isLocked: true),
+        ChitraFolder(id: 'f1', name: 'Bills'),
       ],
       _documents = [
         ChitraDocument(

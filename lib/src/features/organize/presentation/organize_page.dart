@@ -289,7 +289,6 @@ class _OrganizePageState extends State<OrganizePage> {
       animation: _session,
       builder: (context, _) {
         return Scaffold(
-          appBar: AppBar(),
           body: _FoldersTab(
             session: _session,
             sortBy: _sortBy,
