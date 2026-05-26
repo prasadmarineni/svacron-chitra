@@ -289,33 +289,11 @@ class _OrganizePageState extends State<OrganizePage> {
       animation: _session,
       builder: (context, _) {
         return Scaffold(
-          appBar: AppBar(
-            actions: [
-              PopupMenuButton<_SortBy>(
-                icon: const Icon(Icons.sort),
-                tooltip: 'Sort',
-                initialValue: _sortBy,
-                onSelected: (v) => setState(() => _sortBy = v),
-                itemBuilder: (_) => const [
-                  PopupMenuItem(
-                    value: _SortBy.date,
-                    child: Text('Sort by Date'),
-                  ),
-                  PopupMenuItem(
-                    value: _SortBy.name,
-                    child: Text('Sort by Name'),
-                  ),
-                  PopupMenuItem(
-                    value: _SortBy.size,
-                    child: Text('Sort by Pages'),
-                  ),
-                ],
-              ),
-            ],
-          ),
+          appBar: AppBar(),
           body: _FoldersTab(
             session: _session,
             sortBy: _sortBy,
+            onSortChanged: (v) => setState(() => _sortBy = v),
             searchQuery: _searchQuery,
             activeFolderId: _activeFolderId,
             onFolderSelected: (id) =>
@@ -358,6 +336,7 @@ class _FoldersTab extends StatelessWidget {
   const _FoldersTab({
     required this.session,
     required this.sortBy,
+    required this.onSortChanged,
     required this.searchQuery,
     required this.activeFolderId,
     required this.onFolderSelected,
@@ -371,6 +350,7 @@ class _FoldersTab extends StatelessWidget {
 
   final ChitraSession session;
   final _SortBy sortBy;
+  final ValueChanged<_SortBy> onSortChanged;
   final String searchQuery;
   final String? activeFolderId;
   final ValueChanged<String?> onFolderSelected;
@@ -399,6 +379,30 @@ class _FoldersTab extends StatelessWidget {
               scrollDirection: Axis.horizontal,
               child: Row(
                 children: [
+                  // Sort menu
+                  Padding(
+                    padding: const EdgeInsets.only(right: 6),
+                    child: PopupMenuButton<_SortBy>(
+                      icon: const Icon(Icons.sort),
+                      tooltip: 'Sort',
+                      initialValue: sortBy,
+                      onSelected: onSortChanged,
+                      itemBuilder: (_) => const [
+                        PopupMenuItem(
+                          value: _SortBy.date,
+                          child: Text('Sort by Date'),
+                        ),
+                        PopupMenuItem(
+                          value: _SortBy.name,
+                          child: Text('Sort by Name'),
+                        ),
+                        PopupMenuItem(
+                          value: _SortBy.size,
+                          child: Text('Sort by Pages'),
+                        ),
+                      ],
+                    ),
+                  ),
                   // "All" chip
                   Padding(
                     padding: const EdgeInsets.only(right: 6),
