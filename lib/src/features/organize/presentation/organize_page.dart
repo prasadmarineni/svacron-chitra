@@ -19,26 +19,11 @@ class OrganizePage extends StatefulWidget {
   State<OrganizePage> createState() => _OrganizePageState();
 }
 
-class _OrganizePageState extends State<OrganizePage>
-    with SingleTickerProviderStateMixin {
-  late TabController _tabController;
+class _OrganizePageState extends State<OrganizePage> {
   final _session = ChitraSession.instance;
   _SortBy _sortBy = _SortBy.date;
   String? _activeFolderId; // null = show all
   String _searchQuery = '';
-  bool _isSearchActive = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _tabController = TabController(length: 4, vsync: this);
-  }
-
-  @override
-  void dispose() {
-    _tabController.dispose();
-    super.dispose();
-  }
 
   // ── helpers ──────────────────────────────────────────────────────────────
   List<ChitraDocument> _sortedDocs(List<ChitraDocument> docs) {
@@ -193,100 +178,6 @@ class _OrganizePageState extends State<OrganizePage>
     }
   }
 
-  Future<bool> _confirmEmptyTrash() async {
-    return await showDialog<bool>(
-          context: context,
-          builder: (ctx) => AlertDialog(
-            title: const Text('Empty Trash?'),
-            content: const Text(
-              'All documents in trash will be permanently deleted.',
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(ctx, false),
-                child: const Text('Cancel'),
-              ),
-              FilledButton(
-                style: FilledButton.styleFrom(
-                  backgroundColor: Colors.red,
-                ),
-                onPressed: () => Navigator.pop(ctx, true),
-                child: const Text('Empty Trash'),
-              ),
-            ],
-          ),
-        ) ??
-        false;
-  }
-
-  // ── save current batch as document ────────────────────────────────────────
-  Future<void> _saveCurrentBatch() async {
-    if (_session.imagePaths.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('No scanned pages in session.')),
-      );
-      return;
-    }
-    final ctrl = TextEditingController(
-      text: 'Scan ${DateTime.now().day}/${DateTime.now().month}/${DateTime.now().year}',
-    );
-    String? selectedFolderId = _session.folders.first.id;
-    final result = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setLocal) => AlertDialog(
-          title: const Text('Save to Library'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: ctrl,
-                decoration: const InputDecoration(
-                  labelText: 'Document name',
-                  border: OutlineInputBorder(),
-                ),
-              ),
-              const SizedBox(height: 12),
-              DropdownButtonFormField<String>(
-                value: selectedFolderId,
-                decoration: const InputDecoration(
-                  labelText: 'Folder',
-                  border: OutlineInputBorder(),
-                ),
-                items: [
-                  for (final f in _session.folders)
-                    DropdownMenuItem(value: f.id, child: Text(f.name)),
-                ],
-                onChanged: (v) => setLocal(() => selectedFolderId = v),
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Cancel'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('Save'),
-            ),
-          ],
-        ),
-      ),
-    );
-    if (result == true) {
-      _session.createDocumentFromBatch(
-        name: ctrl.text.trim().isEmpty ? 'Untitled' : ctrl.text.trim(),
-        folderId: selectedFolderId ?? 'default',
-      );
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Document saved to library.')),
-        );
-      }
-    }
-  }
-
   // ── camera & file pick ───────────────────────────────────────────────────
   Future<void> _openCamera() async {
     await Navigator.of(context).push<void>(
@@ -399,56 +290,7 @@ class _OrganizePageState extends State<OrganizePage>
       builder: (context, _) {
         return Scaffold(
           appBar: AppBar(
-            title: _isSearchActive
-                ? TextField(
-                    autofocus: true,
-                    style: const TextStyle(fontSize: 16),
-                    decoration: const InputDecoration(
-                      hintText: 'Search documents…',
-                      border: InputBorder.none,
-                    ),
-                    onChanged: (v) => setState(() => _searchQuery = v),
-                  )
-                : null,
-            bottom: TabBar(
-              controller: _tabController,
-              tabs: [
-                Tab(
-                  icon: const Icon(Icons.folder_outlined),
-                  text: 'Folders',
-                ),
-                Tab(
-                  icon: Badge(
-                    isLabelVisible: _session.favoriteDocuments.isNotEmpty,
-                    label: Text('${_session.favoriteDocuments.length}'),
-                    child: const Icon(Icons.star_outline),
-                  ),
-                  text: 'Favorites',
-                ),
-                const Tab(
-                  icon: Icon(Icons.access_time),
-                  text: 'Recent',
-                ),
-                Tab(
-                  icon: Badge(
-                    isLabelVisible: _session.trashedDocuments.isNotEmpty,
-                    label: Text('${_session.trashedDocuments.length}'),
-                    child: const Icon(Icons.delete_outline),
-                  ),
-                  text: 'Trash',
-                ),
-              ],
-            ),
             actions: [
-              IconButton(
-                icon: Icon(
-                    _isSearchActive ? Icons.search_off : Icons.search),
-                tooltip: 'Search',
-                onPressed: () => setState(() {
-                  _isSearchActive = !_isSearchActive;
-                  if (!_isSearchActive) _searchQuery = '';
-                }),
-              ),
               PopupMenuButton<_SortBy>(
                 icon: const Icon(Icons.sort),
                 tooltip: 'Sort',
@@ -471,95 +313,19 @@ class _OrganizePageState extends State<OrganizePage>
               ),
             ],
           ),
-          body: Column(
-            children: [
-              // Session save banner (only when there's an unsaved batch)
-              if (_session.imagePaths.isNotEmpty)
-                InkWell(
-                  onTap: _saveCurrentBatch,
-                  child: Container(
-                    color: Theme.of(context).colorScheme.primaryContainer,
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 10,
-                    ),
-                    child: Row(
-                      children: [
-                        Icon(
-                          Icons.save_alt,
-                          size: 18,
-                          color:
-                              Theme.of(context).colorScheme.onPrimaryContainer,
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            '${_session.imagePaths.length} unsaved page(s) in session — tap to save',
-                            style: TextStyle(
-                              color: Theme.of(context)
-                                  .colorScheme
-                                  .onPrimaryContainer,
-                            ),
-                          ),
-                        ),
-                        Icon(
-                          Icons.chevron_right,
-                          color:
-                              Theme.of(context).colorScheme.onPrimaryContainer,
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              // Tabs
-              Expanded(
-                child: TabBarView(
-                  controller: _tabController,
-                  children: [
-                    _FoldersTab(
-                      session: _session,
-                      sortBy: _sortBy,
-                      searchQuery: _searchQuery,
-                      activeFolderId: _activeFolderId,
-                      onFolderSelected: (id) =>
-                          setState(() => _activeFolderId = id),
-                      onCreateFolder: _showCreateFolderDialog,
-                      onRenameFolder: _showRenameFolderDialog,
-                      onRenameDoc: _showRenameDocDialog,
-                      onMoveDoc: _showMoveToFolderDialog,
-                      sortedDocs: _sortedDocs,
-                      filtered: _filtered,
-                    ),
-                    _DocListTab(
-                      title: 'Favorites',
-                      emptyMessage: 'No favourite documents yet.',
-                      emptyIcon: Icons.star_outline,
-                      docs: _sortedDocs(
-                        _filtered(_session.favoriteDocuments),
-                      ),
-                      session: _session,
-                      onRenameDoc: _showRenameDocDialog,
-                      onMoveDoc: _showMoveToFolderDialog,
-                    ),
-                    _DocListTab(
-                      title: 'Recent',
-                      emptyMessage: 'No documents yet.',
-                      emptyIcon: Icons.access_time,
-                      docs: _filtered(_session.recentDocuments),
-                      session: _session,
-                      onRenameDoc: _showRenameDocDialog,
-                      onMoveDoc: _showMoveToFolderDialog,
-                    ),
-                    _TrashTab(
-                      session: _session,
-                      onEmptyTrash: () async {
-                        if (await _confirmEmptyTrash()) _session.emptyTrash();
-                      },
-                    ),
-                  ],
-                ),
-              ),
-            ],
+          body: _FoldersTab(
+            session: _session,
+            sortBy: _sortBy,
+            searchQuery: _searchQuery,
+            activeFolderId: _activeFolderId,
+            onFolderSelected: (id) =>
+                setState(() => _activeFolderId = id),
+            onCreateFolder: _showCreateFolderDialog,
+            onRenameFolder: _showRenameFolderDialog,
+            onRenameDoc: _showRenameDocDialog,
+            onMoveDoc: _showMoveToFolderDialog,
+            sortedDocs: _sortedDocs,
+            filtered: _filtered,
           ),
           floatingActionButton: Column(
             mainAxisSize: MainAxisSize.min,
@@ -729,121 +495,6 @@ class _FoldersTab extends StatelessWidget {
           ],
         ),
       ),
-    );
-  }
-}
-
-// ══════════════════════════════════════════════════════════════════════════════
-// Generic doc-list tab (Favorites, Recent)
-// ══════════════════════════════════════════════════════════════════════════════
-class _DocListTab extends StatelessWidget {
-  const _DocListTab({
-    required this.title,
-    required this.emptyMessage,
-    required this.emptyIcon,
-    required this.docs,
-    required this.session,
-    required this.onRenameDoc,
-    required this.onMoveDoc,
-  });
-
-  final String title;
-  final String emptyMessage;
-  final IconData emptyIcon;
-  final List<ChitraDocument> docs;
-  final ChitraSession session;
-  final ValueChanged<ChitraDocument> onRenameDoc;
-  final ValueChanged<ChitraDocument> onMoveDoc;
-
-  @override
-  Widget build(BuildContext context) {
-    if (docs.isEmpty) {
-      return _EmptyState(icon: emptyIcon, message: emptyMessage);
-    }
-    return ListView.builder(
-      padding: const EdgeInsets.fromLTRB(12, 8, 12, 80),
-      itemCount: docs.length,
-      itemBuilder: (ctx, i) => _DocumentCard(
-        doc: docs[i],
-        session: session,
-        onRename: () => onRenameDoc(docs[i]),
-        onMove: () => onMoveDoc(docs[i]),
-      ),
-    );
-  }
-}
-
-// ══════════════════════════════════════════════════════════════════════════════
-// Trash tab
-// ══════════════════════════════════════════════════════════════════════════════
-class _TrashTab extends StatelessWidget {
-  const _TrashTab({required this.session, required this.onEmptyTrash});
-
-  final ChitraSession session;
-  final VoidCallback onEmptyTrash;
-
-  @override
-  Widget build(BuildContext context) {
-    final trashed = session.trashedDocuments;
-    if (trashed.isEmpty) {
-      return const _EmptyState(icon: Icons.delete_outlined, message: 'Trash is empty.');
-    }
-    return Column(
-      children: [
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          child: Row(
-            children: [
-              Text(
-                '${trashed.length} item(s)',
-                style: Theme.of(context).textTheme.bodySmall,
-              ),
-              const Spacer(),
-              TextButton.icon(
-                icon: const Icon(Icons.delete_forever, size: 18),
-                label: const Text('Empty Trash'),
-                style: TextButton.styleFrom(foregroundColor: Colors.red),
-                onPressed: onEmptyTrash,
-              ),
-            ],
-          ),
-        ),
-        Expanded(
-          child: ListView.builder(
-            padding: const EdgeInsets.fromLTRB(12, 0, 12, 16),
-            itemCount: trashed.length,
-            itemBuilder: (ctx, i) {
-              final doc = trashed[i];
-              return Card(
-                child: ListTile(
-                  leading: _DocThumbnail(doc: doc, size: 40),
-                  title: Text(
-                    doc.name,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  subtitle: Text('${doc.pages.length} page(s)'),
-                  trailing: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      IconButton(
-                        icon: const Icon(Icons.restore),
-                        tooltip: 'Restore',
-                        onPressed: () => session.restoreFromTrash(doc.id),
-                      ),
-                      IconButton(
-                        icon: const Icon(Icons.delete_forever,
-                            color: Colors.red),
-                        tooltip: 'Delete Forever',
-                        onPressed: () => session.deleteForever(doc.id),
-                      ),
-                    ],
-                  ),
-                ),
-              );
-            },
-          ),
-        ),
-      ],
     );
   }
 }

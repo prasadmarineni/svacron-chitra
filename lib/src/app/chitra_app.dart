@@ -1,10 +1,8 @@
 import 'package:flutter/material.dart';
 
-import '../features/dashboard/presentation/dashboard_page.dart';
 import '../features/ocr/presentation/ocr_page.dart';
 import '../features/organize/presentation/organize_page.dart';
 import '../features/pdf_tools/presentation/pdf_tools_page.dart';
-import '../features/scanner/presentation/scanner_page.dart';
 import '../features/settings/presentation/settings_page.dart';
 import '../theme/app_theme.dart';
 
@@ -33,13 +31,11 @@ class _HomeShellState extends State<HomeShell> {
   int _index = 0;
 
   final List<Widget> _pages = const [
-    DashboardPage(),
-    ScannerPage(),
-    PdfToolsPage(),
     OrganizePage(),
+    PdfToolsPage(),
   ];
 
-  static const _navLabels = ['Home', 'Scan', 'PDF', 'Organize'];
+  static const _navLabels = ['Home', 'PDF'];
 
   @override
   Widget build(BuildContext context) {
@@ -154,24 +150,14 @@ class _HomeShellState extends State<HomeShell> {
         onDestinationSelected: (value) => setState(() => _index = value),
         destinations: const [
           NavigationDestination(
-            icon: Icon(Icons.dashboard_outlined),
-            selectedIcon: Icon(Icons.dashboard),
+            icon: Icon(Icons.folder_outlined),
+            selectedIcon: Icon(Icons.folder),
             label: 'Home',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.document_scanner_outlined),
-            selectedIcon: Icon(Icons.document_scanner),
-            label: 'Scan',
           ),
           NavigationDestination(
             icon: Icon(Icons.picture_as_pdf_outlined),
             selectedIcon: Icon(Icons.picture_as_pdf),
             label: 'PDF',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.folder_outlined),
-            selectedIcon: Icon(Icons.folder),
-            label: 'Organize',
           ),
         ],
       ),
