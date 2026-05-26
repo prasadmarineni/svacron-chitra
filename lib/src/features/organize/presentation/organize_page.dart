@@ -7,7 +7,7 @@ import 'package:image_picker/image_picker.dart';
 import '../../../core/models/document.dart';
 import '../../../core/models/folder.dart';
 import '../../../core/state/chitra_session.dart';
-import '../../scanner/presentation/camera_capture_screen.dart';
+import '../../scanner/presentation/in_app_camera_screen.dart';
 
 // ── sort options ─────────────────────────────────────────────────────────────
 enum _SortBy { name, date, size }
@@ -182,7 +182,9 @@ class _OrganizePageState extends State<OrganizePage> {
   Future<void> _openCamera() async {
     await Navigator.of(context).push<void>(
       MaterialPageRoute<void>(
-        builder: (_) => const CameraCaptureScreen(),
+        builder: (_) => InAppCameraScreen(
+          initialFolderId: _activeFolderId,
+        ),
       ),
     );
   }
