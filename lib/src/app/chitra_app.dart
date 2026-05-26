@@ -37,17 +37,19 @@ class _HomeShellState extends State<HomeShell> {
     ScannerPage(),
     PdfToolsPage(),
     OrganizePage(),
-    SettingsPage(),
   ];
+
+  static const _navLabels = ['Home', 'Scan', 'PDF', 'Organize'];
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Svacron Chitra'),
+        title: Text(_navLabels[_index]),
         actions: [
           IconButton(
             icon: const Icon(Icons.search),
+            tooltip: 'Search',
             onPressed: () {
               showSearch<void>(
                 context: context,
@@ -55,15 +57,96 @@ class _HomeShellState extends State<HomeShell> {
               );
             },
           ),
-          IconButton(
-            icon: const Icon(Icons.text_snippet_outlined),
-            onPressed: () {
-              Navigator.of(
-                context,
-              ).push(MaterialPageRoute<void>(builder: (_) => const OcrPage()));
-            },
-          ),
         ],
+      ),
+      drawer: Drawer(
+        child: ListView(
+          padding: EdgeInsets.zero,
+          children: [
+            DrawerHeader(
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.primary,
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withAlpha(40),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: const Icon(
+                      Icons.document_scanner,
+                      color: Colors.white,
+                      size: 32,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  const Text(
+                    'Svacron Chitra',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const Text(
+                    'Document Scanner & PDF',
+                    style: TextStyle(color: Colors.white70, fontSize: 12),
+                  ),
+                ],
+              ),
+            ),
+            ListTile(
+              leading: const Icon(Icons.text_snippet_outlined),
+              title: const Text('OCR — Extract Text'),
+              onTap: () {
+                Navigator.pop(context);
+                Navigator.of(context).push(
+                  MaterialPageRoute<void>(builder: (_) => const OcrPage()),
+                );
+              },
+            ),
+            const Divider(),
+            ListTile(
+              leading: const Icon(Icons.settings_outlined),
+              title: const Text('Settings'),
+              onTap: () {
+                Navigator.pop(context);
+                Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                      builder: (_) => const SettingsPage()),
+                );
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.info_outline),
+              title: const Text('About Chitra'),
+              onTap: () {
+                Navigator.pop(context);
+                showAboutDialog(
+                  context: context,
+                  applicationName: 'Svacron Chitra',
+                  applicationVersion: '1.0.0',
+                  applicationIcon: const Icon(Icons.document_scanner),
+                  children: const [
+                    Text(
+                        'Offline-first document scanner, PDF viewer, and organizer.'),
+                  ],
+                );
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.help_outline),
+              title: const Text('Help & Support'),
+              onTap: () {
+                Navigator.pop(context);
+              },
+            ),
+          ],
+        ),
       ),
       body: IndexedStack(index: _index, children: _pages),
       bottomNavigationBar: NavigationBar(
@@ -89,11 +172,6 @@ class _HomeShellState extends State<HomeShell> {
             icon: Icon(Icons.folder_outlined),
             selectedIcon: Icon(Icons.folder),
             label: 'Organize',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.settings_outlined),
-            selectedIcon: Icon(Icons.settings),
-            label: 'Settings',
           ),
         ],
       ),
