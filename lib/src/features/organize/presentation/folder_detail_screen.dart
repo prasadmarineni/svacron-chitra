@@ -77,7 +77,7 @@ class _FolderDetailScreenState extends State<FolderDetailScreen> {
                         borderRadius: BorderRadius.circular(12),
                         child: hasFile
                             ? Image.file(
-                                File(firstPath ?? ''),
+                                File(firstPath!),
                                 fit: BoxFit.cover,
                               )
                             : Container(

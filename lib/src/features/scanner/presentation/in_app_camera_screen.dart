@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:image/image.dart' as img;
 
 import '../../../core/state/chitra_session.dart';
+import '../../../core/storage/app_storage.dart';
 
 /// Document type enum for scanner modes
 enum DocumentType { document, ids, ocrText, signature }
@@ -76,9 +77,13 @@ class _InAppCameraScreenState extends State<InAppCameraScreen> {
 
     try {
       final xFile = await _cameraController.takePicture();
+      // Copy immediately into the persistent images folder so it survives reinstalls.
+      final persistentPath = AppStorage.newImagePath();
+      await File(xFile.path).copy(persistentPath);
+
       setState(() {
-        _capturedImagePath = xFile.path;
-        _lastCaptureThumbnailPath = xFile.path;
+        _capturedImagePath = persistentPath;
+        _lastCaptureThumbnailPath = persistentPath;
         _cornerPoints = const [
           Offset(0.10, 0.10),
           Offset(0.90, 0.10),
@@ -230,7 +235,8 @@ class _InAppCameraScreenState extends State<InAppCameraScreen> {
         width: width,
         height: height,
       );
-      final outPath = imagePath.replaceFirst('.jpg', '_crop.jpg');
+      // Always save to the persistent images folder.
+      final outPath = AppStorage.newImagePath();
       await File(outPath).writeAsBytes(img.encodeJpg(cropped, quality: 95));
       return outPath;
     } catch (_) {

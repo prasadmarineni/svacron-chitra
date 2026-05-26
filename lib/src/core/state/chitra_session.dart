@@ -1,8 +1,12 @@
+import 'dart:convert';
+import 'dart:io';
+
 import 'package:flutter/foundation.dart';
 
 import '../models/document.dart';
 import '../models/document_page.dart';
 import '../models/folder.dart';
+import '../storage/app_storage.dart';
 
 class ChitraSession extends ChangeNotifier {
   ChitraSession._();
@@ -79,6 +83,7 @@ class ChitraSession extends ChangeNotifier {
       _documents.add(doc);
     }
     notifyListeners();
+    _markDirty();
   }
 
   /// Creates a new document from the current imagePaths batch.
@@ -121,6 +126,7 @@ class ChitraSession extends ChangeNotifier {
     _documents.add(doc);
     _imagePaths.clear();
     notifyListeners();
+    _markDirty();
     return doc;
   }
 
@@ -131,6 +137,7 @@ class ChitraSession extends ChangeNotifier {
       isFavorite: !_documents[idx].isFavorite,
     );
     notifyListeners();
+    _markDirty();
   }
 
   void renameDocument(String docId, String newName) {
@@ -138,6 +145,7 @@ class ChitraSession extends ChangeNotifier {
     if (idx < 0) return;
     _documents[idx] = _documents[idx].copyWith(name: newName);
     notifyListeners();
+    _markDirty();
   }
 
   void moveDocumentToFolder(String docId, String folderId) {
@@ -145,30 +153,35 @@ class ChitraSession extends ChangeNotifier {
     if (idx < 0) return;
     _documents[idx] = _documents[idx].copyWith(folderId: folderId);
     notifyListeners();
+    _markDirty();
   }
 
   void moveToTrash(String docId) {
     if (!_trashedDocIds.contains(docId)) {
       _trashedDocIds.add(docId);
       notifyListeners();
+      _markDirty();
     }
   }
 
   void restoreFromTrash(String docId) {
     _trashedDocIds.remove(docId);
     notifyListeners();
+    _markDirty();
   }
 
   void deleteForever(String docId) {
     _trashedDocIds.remove(docId);
     _documents.removeWhere((d) => d.id == docId);
     notifyListeners();
+    _markDirty();
   }
 
   void emptyTrash() {
     _documents.removeWhere((d) => _trashedDocIds.contains(d.id));
     _trashedDocIds.clear();
     notifyListeners();
+    _markDirty();
   }
 
   // ── folders ───────────────────────────────────────────────────────────────
@@ -184,6 +197,7 @@ class ChitraSession extends ChangeNotifier {
       ),
     );
     notifyListeners();
+    _markDirty();
   }
 
   void deleteFolder(String folderId) {
@@ -195,6 +209,7 @@ class ChitraSession extends ChangeNotifier {
     }
     _folders.removeWhere((f) => f.id == folderId);
     notifyListeners();
+    _markDirty();
   }
 
   void renameFolder(String folderId, String newName) {
@@ -207,6 +222,7 @@ class ChitraSession extends ChangeNotifier {
       isHidden: _folders[idx].isHidden,
     );
     notifyListeners();
+    _markDirty();
   }
 
   // ── labels / tags ─────────────────────────────────────────────────────────
@@ -217,6 +233,7 @@ class ChitraSession extends ChangeNotifier {
   void addLabel(String label) {
     _allLabels.add(label);
     notifyListeners();
+    _markDirty();
   }
 
   void addLabelToDocument(String docId, String label) {
@@ -227,6 +244,7 @@ class ChitraSession extends ChangeNotifier {
     if (existing.contains(label)) return;
     _documents[idx] = _documents[idx].copyWith(labels: [...existing, label]);
     notifyListeners();
+    _markDirty();
   }
 
   void removeLabelFromDocument(String docId, String label) {
@@ -236,6 +254,7 @@ class ChitraSession extends ChangeNotifier {
       labels: _documents[idx].labels.where((l) => l != label).toList(),
     );
     notifyListeners();
+    _markDirty();
   }
 
   // ── search ────────────────────────────────────────────────────────────────
@@ -249,5 +268,64 @@ class ChitraSession extends ChangeNotifier {
               d.labels.any((l) => l.toLowerCase().contains(q)),
         )
         .toList();
+  }
+
+  // ── persistence ───────────────────────────────────────────────────────────
+  bool _persistenceDirty = false;
+
+  /// Loads data from [AppStorage.metadataFile].
+  /// Call once at app startup after [AppStorage.init].
+  Future<void> loadFromDisk() async {
+    final file = AppStorage.metadataFile;
+    if (!file.existsSync()) return;
+    try {
+      final raw = await file.readAsString();
+      final json = jsonDecode(raw) as Map<String, dynamic>;
+
+      final folders = (json['folders'] as List<dynamic>? ?? [])
+          .map((f) => ChitraFolder.fromJson(f as Map<String, dynamic>))
+          .toList();
+      final docs = (json['documents'] as List<dynamic>? ?? [])
+          .map((d) => ChitraDocument.fromJson(d as Map<String, dynamic>))
+          .where((d) {
+            // Remove documents whose image files have all been deleted.
+            return d.pages.any((p) => File(p.sourcePath).existsSync());
+          })
+          .toList();
+
+      _folders
+        ..clear()
+        ..addAll(folders);
+      _documents
+        ..clear()
+        ..addAll(docs);
+      notifyListeners();
+      debugPrint('[ChitraSession] loaded ${_documents.length} docs, '
+          '${_folders.length} folders from disk.');
+    } catch (e) {
+      debugPrint('[ChitraSession] failed to load from disk: $e');
+    }
+  }
+
+  /// Writes current state to [AppStorage.metadataFile].
+  Future<void> saveToDisk() async {
+    try {
+      final payload = jsonEncode({
+        'version': 1,
+        'folders': _folders.map((f) => f.toJson()).toList(),
+        'documents': _documents.map((d) => d.toJson()).toList(),
+      });
+      await AppStorage.metadataFile.writeAsString(payload);
+      _persistenceDirty = false;
+    } catch (e) {
+      debugPrint('[ChitraSession] failed to save to disk: $e');
+    }
+  }
+
+  /// Marks session dirty and schedules a save.
+  void _markDirty() {
+    if (_persistenceDirty) return;
+    _persistenceDirty = true;
+    Future.microtask(saveToDisk);
   }
 }

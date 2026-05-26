@@ -4,7 +4,19 @@ import 'package:flutter/material.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../../../core/models/document.dart';
+import '../../../core/models/document_page.dart';
 import '../../../core/models/folder.dart';
+import '../../../core/state/chitra_session.dart';
+import 'editors/color_filter_editor_screen.dart';
+import 'editors/crop_editor_screen.dart';
+import 'editors/cut_editor_screen.dart';
+import 'editors/doodle_editor_screen.dart';
+import 'editors/erase_editor_screen.dart';
+import 'editors/highlight_editor_screen.dart';
+import 'editors/rotate_editor_screen.dart';
+import 'editors/signature_editor_screen.dart';
+import 'editors/text_editor_screen.dart';
+import 'editors/watermark_editor_screen.dart';
 
 /// Displays a single image with options for edit, share, save, print, delete, batch edit.
 class ImageViewerScreen extends StatefulWidget {
@@ -272,11 +284,96 @@ class _ImageViewerScreenState extends State<ImageViewerScreen> {
     );
   }
 
-  void _editImage(String editType) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Opening $editType editor...')),
-    );
+  Future<void> _editImage(String editType) async {
+    // Close the bottom sheet first
     Navigator.pop(context);
+
+    final page = widget.document.pages[_currentPageIndex];
+    final imagePath = page.sourcePath;
+
+    String? resultPath;
+    switch (editType) {
+      case 'crop':
+        resultPath = await Navigator.push<String>(
+          context,
+          MaterialPageRoute(
+            builder: (_) => CropEditorScreen(imagePath: imagePath),
+          ),
+        );
+      case 'colorfilter':
+        resultPath = await Navigator.push<String>(
+          context,
+          MaterialPageRoute(
+            builder: (_) => ColorFilterEditorScreen(imagePath: imagePath),
+          ),
+        );
+      case 'rotate':
+        resultPath = await Navigator.push<String>(
+          context,
+          MaterialPageRoute(
+            builder: (_) => RotateEditorScreen(imagePath: imagePath),
+          ),
+        );
+      case 'erase':
+        resultPath = await Navigator.push<String>(
+          context,
+          MaterialPageRoute(
+            builder: (_) => EraseEditorScreen(imagePath: imagePath),
+          ),
+        );
+      case 'text':
+        resultPath = await Navigator.push<String>(
+          context,
+          MaterialPageRoute(
+            builder: (_) => TextEditorScreen(imagePath: imagePath),
+          ),
+        );
+      case 'highlight':
+        resultPath = await Navigator.push<String>(
+          context,
+          MaterialPageRoute(
+            builder: (_) => HighlightEditorScreen(imagePath: imagePath),
+          ),
+        );
+      case 'doodle':
+        resultPath = await Navigator.push<String>(
+          context,
+          MaterialPageRoute(
+            builder: (_) => DoodleEditorScreen(imagePath: imagePath),
+          ),
+        );
+      case 'watermark':
+        resultPath = await Navigator.push<String>(
+          context,
+          MaterialPageRoute(
+            builder: (_) => WatermarkEditorScreen(imagePath: imagePath),
+          ),
+        );
+      case 'cut':
+        resultPath = await Navigator.push<String>(
+          context,
+          MaterialPageRoute(
+            builder: (_) => CutEditorScreen(imagePath: imagePath),
+          ),
+        );
+      case 'signature':
+        resultPath = await Navigator.push<String>(
+          context,
+          MaterialPageRoute(
+            builder: (_) => SignatureEditorScreen(imagePath: imagePath),
+          ),
+        );
+    }
+
+    if (resultPath != null && mounted) {
+      final pages = List<DocumentPage>.from(widget.document.pages);
+      pages[_currentPageIndex] = pages[_currentPageIndex].copyWith(
+        sourcePath: resultPath,
+      );
+      final updated = widget.document.copyWith(pages: pages);
+      ChitraSession.instance.saveDocument(updated);
+      setState(() {});
+    }
   }
 
   void _showDeleteConfirmation() {

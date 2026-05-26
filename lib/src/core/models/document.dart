@@ -44,4 +44,30 @@ class ChitraDocument {
       labels: labels ?? this.labels,
     );
   }
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'name': name,
+        'folderId': folderId,
+        'createdAt': createdAt.toIso8601String(),
+        'isFavorite': isFavorite,
+        'isEncrypted': isEncrypted,
+        'ocrText': ocrText,
+        'labels': labels,
+        'pages': pages.map((p) => p.toJson()).toList(),
+      };
+
+  factory ChitraDocument.fromJson(Map<String, dynamic> j) => ChitraDocument(
+        id: j['id'] as String,
+        name: j['name'] as String,
+        folderId: j['folderId'] as String,
+        createdAt: DateTime.parse(j['createdAt'] as String),
+        isFavorite: (j['isFavorite'] as bool?) ?? false,
+        isEncrypted: (j['isEncrypted'] as bool?) ?? false,
+        ocrText: j['ocrText'] as String?,
+        labels: (j['labels'] as List<dynamic>?)?.cast<String>() ?? const [],
+        pages: (j['pages'] as List<dynamic>)
+            .map((p) => DocumentPage.fromJson(p as Map<String, dynamic>))
+            .toList(),
+      );
 }
