@@ -208,9 +208,51 @@ class _CameraCaptureScreenState extends State<CameraCaptureScreen> {
     );
   }
 
+  /// Called when user tries to exit (back gesture, close button).
+  /// If pages exist, prompts Save / Discard / Cancel.
+  Future<bool> _confirmExit() async {
+    if (_scannedPages.isEmpty) return true;
+    final result = await showDialog<String>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Save scanned pages?'),
+        content: Text(
+          '${_scannedPages.length} page${_scannedPages.length == 1 ? '' : 's'} will be lost if you exit without saving.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, 'cancel'),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, 'discard'),
+            child: const Text('Discard', style: TextStyle(color: Colors.red)),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, 'save'),
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+    if (result == 'save') {
+      _saveDocument();
+      return false; // _saveDocument already pops
+    }
+    return result == 'discard';
+  }
+
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) async {
+        if (didPop) return;
+        final canExit = await _confirmExit();
+        if (canExit && mounted) Navigator.pop(context);
+      },
+      child: Scaffold(
       appBar: AppBar(
         title: Text(
           _scannedPages.isEmpty
@@ -345,7 +387,10 @@ class _CameraCaptureScreenState extends State<CameraCaptureScreen> {
           children: [
             IconButton(
               icon: const Icon(Icons.close),
-              onPressed: () => Navigator.pop(context),
+              onPressed: () async {
+                final canExit = await _confirmExit();
+                if (canExit && mounted) Navigator.pop(context);
+              },
               tooltip: 'Cancel',
             ),
             FloatingActionButton(
@@ -361,13 +406,17 @@ class _CameraCaptureScreenState extends State<CameraCaptureScreen> {
             ),
             IconButton(
               icon: const Icon(Icons.image),
-              onPressed: () => Navigator.pop(context),
+              onPressed: () async {
+                final canExit = await _confirmExit();
+                if (canExit && mounted) Navigator.pop(context);
+              },
               tooltip: 'Gallery',
             ),
           ],
         ),
       ),
-    );
+    ),   // closes Scaffold (child of PopScope)
+    );   // closes PopScope
   }
 
   Widget _buildCornerGuide() {
