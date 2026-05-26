@@ -53,6 +53,15 @@ class _HomeShellState extends State<HomeShell> {
               );
             },
           ),
+          PopupMenuButton(
+            icon: const Icon(Icons.sort),
+            tooltip: 'Sort',
+            itemBuilder: (_) => const [
+              PopupMenuItem(child: Text('Sort by Date')),
+              PopupMenuItem(child: Text('Sort by Name')),
+              PopupMenuItem(child: Text('Sort by Pages')),
+            ],
+          ),
         ],
       ),
       drawer: Drawer(
