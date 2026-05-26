@@ -1,10 +1,13 @@
 import 'dart:io';
 
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 
 import '../../../core/models/document.dart';
 import '../../../core/models/folder.dart';
 import '../../../core/state/chitra_session.dart';
+import '../../scanner/presentation/camera_capture_screen.dart';
 
 // ── sort options ─────────────────────────────────────────────────────────────
 enum _SortBy { name, date, size }
@@ -23,6 +26,7 @@ class _OrganizePageState extends State<OrganizePage>
   _SortBy _sortBy = _SortBy.date;
   String? _activeFolderId; // null = show all
   String _searchQuery = '';
+  bool _isSearchActive = false;
 
   @override
   void initState() {
@@ -283,6 +287,110 @@ class _OrganizePageState extends State<OrganizePage>
     }
   }
 
+  // ── camera & file pick ───────────────────────────────────────────────────
+  Future<void> _openCamera() async {
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(
+        builder: (_) => const CameraCaptureScreen(),
+      ),
+    );
+  }
+
+  Future<void> _pickFileOrImage() async {
+    await showModalBottomSheet<void>(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (_) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const SizedBox(height: 12),
+            Container(
+              width: 36,
+              height: 4,
+              decoration: BoxDecoration(
+                color: Colors.grey.shade300,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            const Padding(
+              padding: EdgeInsets.fromLTRB(16, 12, 16, 4),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  'Add to Library',
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                ),
+              ),
+            ),
+            ListTile(
+              leading: Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.blue.withAlpha(25),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Icon(Icons.image_outlined, color: Colors.blue),
+              ),
+              title: const Text('Pick Image'),
+              subtitle: const Text('Add a photo or scanned image'),
+              onTap: () async {
+                Navigator.pop(context);
+                final picker = ImagePicker();
+                final picked =
+                    await picker.pickImage(source: ImageSource.gallery);
+                if (picked != null && mounted) {
+                  _session.addImagePath(picked.path);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                        content: Text(
+                            'Image added. Tap the banner above to save.')),
+                  );
+                }
+              },
+            ),
+            ListTile(
+              leading: Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.red.withAlpha(25),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child:
+                    const Icon(Icons.picture_as_pdf_outlined, color: Colors.red),
+              ),
+              title: const Text('Pick PDF'),
+              subtitle: const Text('Import a PDF document'),
+              onTap: () async {
+                Navigator.pop(context);
+                final result = await FilePicker.platform.pickFiles(
+                  type: FileType.custom,
+                  allowedExtensions: ['pdf'],
+                );
+                if (result != null &&
+                    result.files.single.path != null &&
+                    mounted) {
+                  final name =
+                      result.files.single.name.replaceAll('.pdf', '');
+                  _session.createDocumentFromBatch(
+                    name: name,
+                    folderId: _session.folders.first.id,
+                  );
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('PDF "$name" imported.')),
+                  );
+                }
+              },
+            ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+  }
+
   // ── build ─────────────────────────────────────────────────────────────────
   @override
   Widget build(BuildContext context) {
@@ -291,7 +399,17 @@ class _OrganizePageState extends State<OrganizePage>
       builder: (context, _) {
         return Scaffold(
           appBar: AppBar(
-            title: const Text('Organize'),
+            title: _isSearchActive
+                ? TextField(
+                    autofocus: true,
+                    style: const TextStyle(fontSize: 16),
+                    decoration: const InputDecoration(
+                      hintText: 'Search documents…',
+                      border: InputBorder.none,
+                    ),
+                    onChanged: (v) => setState(() => _searchQuery = v),
+                  )
+                : null,
             bottom: TabBar(
               controller: _tabController,
               tabs: [
@@ -322,6 +440,15 @@ class _OrganizePageState extends State<OrganizePage>
               ],
             ),
             actions: [
+              IconButton(
+                icon: Icon(
+                    _isSearchActive ? Icons.search_off : Icons.search),
+                tooltip: 'Search',
+                onPressed: () => setState(() {
+                  _isSearchActive = !_isSearchActive;
+                  if (!_isSearchActive) _searchQuery = '';
+                }),
+              ),
               PopupMenuButton<_SortBy>(
                 icon: const Icon(Icons.sort),
                 tooltip: 'Sort',
@@ -346,23 +473,6 @@ class _OrganizePageState extends State<OrganizePage>
           ),
           body: Column(
             children: [
-              // Search bar
-              Padding(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                child: SearchBar(
-                  hintText: 'Search documents…',
-                  leading: const Icon(Icons.search),
-                  trailing: [
-                    if (_searchQuery.isNotEmpty)
-                      IconButton(
-                        icon: const Icon(Icons.close),
-                        onPressed: () => setState(() => _searchQuery = ''),
-                      ),
-                  ],
-                  onChanged: (v) => setState(() => _searchQuery = v),
-                ),
-              ),
               // Session save banner (only when there's an unsaved batch)
               if (_session.imagePaths.isNotEmpty)
                 InkWell(
@@ -451,10 +561,23 @@ class _OrganizePageState extends State<OrganizePage>
               ),
             ],
           ),
-          floatingActionButton: FloatingActionButton.extended(
-            onPressed: _showCreateFolderDialog,
-            icon: const Icon(Icons.create_new_folder_outlined),
-            label: const Text('New Folder'),
+          floatingActionButton: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              FloatingActionButton.small(
+                heroTag: 'fab_pick_file',
+                tooltip: 'Pick Image or PDF',
+                onPressed: _pickFileOrImage,
+                child: const Icon(Icons.attach_file),
+              ),
+              const SizedBox(height: 10),
+              FloatingActionButton.small(
+                heroTag: 'fab_camera',
+                tooltip: 'Open Camera',
+                onPressed: _openCamera,
+                child: const Icon(Icons.camera_alt),
+              ),
+            ],
           ),
         );
       },
@@ -545,32 +668,6 @@ class _FoldersTab extends StatelessWidget {
                   ),
                 ],
               ),
-            ),
-          ),
-        ),
-        // Header
-        SliverToBoxAdapter(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
-            child: Row(
-              children: [
-                Text(
-                  activeFolderId == null
-                      ? 'All Documents'
-                      : session.folders
-                          .firstWhere((f) => f.id == activeFolderId,
-                              orElse: () =>
-                                  const ChitraFolder(id: '', name: ''))
-                          .name,
-                  style: Theme.of(context).textTheme.titleSmall,
-                ),
-                const SizedBox(width: 6),
-                Chip(
-                  label: Text('${docs.length}'),
-                  padding: EdgeInsets.zero,
-                  materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                ),
-              ],
             ),
           ),
         ),
